@@ -12,7 +12,7 @@
 
 #include "sanitizer_common/sanitizer_platform.h"
 
-#if SANITIZER_LINUX || SANITIZER_NETBSD || SANITIZER_FUCHSIA
+#if SANITIZER_LINUX || SANITIZER_NETBSD || SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN
 
 #include "lsan_allocator.h"
 
@@ -29,4 +29,4 @@ void ReplaceSystemMalloc() {}
 
 } // namespace __lsan
 
-#endif  // SANITIZER_LINUX || SANITIZER_NETBSD || SANITIZER_FUCHSIA
+#endif  // SANITIZER_LINUX || SANITIZER_NETBSD || SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN

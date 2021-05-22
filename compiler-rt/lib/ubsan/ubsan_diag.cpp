@@ -408,7 +408,7 @@ static const char *kSuppressionTypes[] = {
 
 void __ubsan::InitializeSuppressions() {
   CHECK_EQ(nullptr, suppression_ctx);
-  suppression_ctx = new (suppression_placeholder)
+  suppression_ctx = new (suppression_placeholder) // NOLINT
       SuppressionContext(kSuppressionTypes, ARRAY_SIZE(kSuppressionTypes));
   suppression_ctx->ParseFromFile(flags()->suppressions);
 }

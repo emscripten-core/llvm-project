@@ -49,6 +49,7 @@ get_terminate() noexcept
   return __libcpp_atomic_load(&__terminate_handler);
 }
 
+#ifndef __EMSCRIPTEN__ // We provide this in JS
 _LIBCPP_NORETURN
 void
 terminate() noexcept
@@ -71,7 +72,9 @@ terminate() noexcept
     }
 #endif // _LIBCPP_NO_EXCEPTIONS
 }
+#endif // !__EMSCRIPTEN__
 
+#if !defined(__EMSCRIPTEN__)
 bool uncaught_exception() noexcept { return uncaught_exceptions() > 0; }
 
 int uncaught_exceptions() noexcept
@@ -80,6 +83,7 @@ int uncaught_exceptions() noexcept
   fprintf(stderr, "uncaught_exceptions not yet implemented\n");
   ::abort();
 }
+#endif // !__EMSCRIPTEN__
 
 
 exception::~exception() noexcept

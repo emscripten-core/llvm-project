@@ -50,7 +50,7 @@ struct ChunkMetadata {
 };
 
 #if defined(__mips64) || defined(__aarch64__) || defined(__i386__) || \
-    defined(__arm__) || SANITIZER_RISCV64
+    defined(__arm__) || SANITIZER_RISCV64 || defined(__wasm__)
 template <typename AddressSpaceViewTy>
 struct AP32 {
   static const uptr kSpaceBeg = 0;
@@ -59,6 +59,7 @@ struct AP32 {
   typedef __sanitizer::CompactSizeClassMap SizeClassMap;
   static const uptr kRegionSizeLog = 20;
   using AddressSpaceView = AddressSpaceViewTy;
+  using ByteMap = __lsan::ByteMapASVT<AddressSpaceView>;
   typedef NoOpMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
 };

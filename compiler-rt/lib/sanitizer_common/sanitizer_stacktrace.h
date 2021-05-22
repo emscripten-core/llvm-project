@@ -33,7 +33,7 @@ static const u32 kStackTraceMax = 256;
 // Fast unwind is the only option on Mac for now; we will need to
 // revisit this macro when slow unwind works on Mac, see
 // https://github.com/google/sanitizers/issues/137
-#if SANITIZER_MAC
+#if SANITIZER_MAC || SANITIZER_EMSCRIPTEN
 #  define SANITIZER_CAN_SLOW_UNWIND 0
 #else
 # define SANITIZER_CAN_SLOW_UNWIND 1
@@ -75,6 +75,9 @@ struct StackTrace {
     return request_fast_unwind;
   }
 
+#if SANITIZER_EMSCRIPTEN
+  static bool snapshot_stack;
+#endif
   static uptr GetCurrentPc();
   static inline uptr GetPreviousInstructionPc(uptr pc);
   static uptr GetNextInstructionPc(uptr pc);

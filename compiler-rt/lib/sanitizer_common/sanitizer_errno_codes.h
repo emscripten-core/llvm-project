@@ -19,12 +19,15 @@
 #ifndef SANITIZER_ERRNO_CODES_H
 #define SANITIZER_ERRNO_CODES_H
 
+// XXX EMSCRIPTEN: use wasi errno codes, which is what our musl port now uses
+#include <wasi/api.h>
+
 namespace __sanitizer {
 
-#define errno_ENOMEM 12
-#define errno_EBUSY 16
-#define errno_EINVAL 22
-#define errno_ENAMETOOLONG 36
+#define errno_ENOMEM       __WASI_ERRNO_NOMEM
+#define errno_EBUSY        __WASI_ERRNO_BUSY
+#define errno_EINVAL       __WASI_ERRNO_INVAL
+#define errno_ENAMETOOLONG __WASI_ERRNO_NAMETOOLONG
 
 // Those might not present or their value differ on different platforms.
 extern const int errno_EOWNERDEAD;

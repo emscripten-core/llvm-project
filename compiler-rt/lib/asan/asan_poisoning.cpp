@@ -176,6 +176,15 @@ uptr __asan_region_is_poisoned(uptr beg, uptr size) {
   if (!size)
     return 0;
   uptr end = beg + size;
+#if SANITIZER_EMSCRIPTEN
+  // XXX Emscripten hack XXX
+  // Null pointer handling, since Emscripten does not crash on null pointer,
+  // ASan must catch null pointer dereference by itself.
+  // Unfortunately, this function returns 0 to mean the region is not
+  // poisoned, so we must return 1 instead if we receive a region
+  // starting at 0.
+  if (!beg) return 1;
+#endif
   if (!AddrIsInMem(beg))
     return beg;
   if (!AddrIsInMem(end))

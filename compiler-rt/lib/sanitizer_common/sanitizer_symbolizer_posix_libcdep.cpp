@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_platform.h"
-#if SANITIZER_POSIX
+#if SANITIZER_POSIX && !SANITIZER_EMSCRIPTEN
 #include "sanitizer_allocator_internal.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"

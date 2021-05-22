@@ -19,6 +19,11 @@
 
 #include <stdlib.h>
 
+#if SANITIZER_EMSCRIPTEN
+extern "C" void emscripten_builtin_free(void *);
+#include <emscripten/em_asm.h>
+#endif
+
 namespace __ubsan {
 
 static const char *GetFlag(const char *flag) {
@@ -50,7 +55,12 @@ void InitializeFlags() {
   {
     CommonFlags cf;
     cf.CopyFrom(*common_flags());
+    cf.print_summary = false;
+#if !SANITIZER_EMSCRIPTEN
+    // getenv on emscripten uses malloc, which we can't when using some sanitizers.
+    // You can't run external symbolizers anyway.
     cf.external_symbolizer_path = GetFlag("UBSAN_SYMBOLIZER_PATH");
+#endif
     OverrideCommonFlags(cf);
   }
 
@@ -64,7 +74,23 @@ void InitializeFlags() {
   // Override from user-specified string.
   parser.ParseString(__ubsan_default_options());
   // Override from environment variable.
+#if SANITIZER_EMSCRIPTEN
+#ifdef __wasm64__
+    // FIXME: support UBSAN in wasm64.
+    abort();
+#else
+  char *options = (char*) EM_ASM_INT({
+    return withBuiltinMalloc(function () {
+      return allocateUTF8(Module['UBSAN_OPTIONS'] || 0);
+    });
+  });
+  parser.ParseString(options);
+  emscripten_builtin_free(options);
+#endif
+#else
   parser.ParseStringFromEnv("UBSAN_OPTIONS");
+#endif // SANITIZER_EMSCRIPTEN
+
   InitializeCommonFlags();
   if (Verbosity()) ReportUnrecognizedFlags();
 

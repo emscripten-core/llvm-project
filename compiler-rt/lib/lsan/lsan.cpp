@@ -19,6 +19,11 @@
 #include "lsan_common.h"
 #include "lsan_thread.h"
 
+#if SANITIZER_EMSCRIPTEN
+extern "C" void emscripten_builtin_free(void *);
+#include <emscripten/em_asm.h>
+#endif
+
 bool lsan_inited;
 bool lsan_init_is_running;
 
@@ -53,7 +58,11 @@ static void InitializeFlags() {
   {
     CommonFlags cf;
     cf.CopyFrom(*common_flags());
+#if !SANITIZER_EMSCRIPTEN
+    // getenv on emscripten uses malloc, which we can't when using LSan.
+    // You can't run external symbolizers anyway.
     cf.external_symbolizer_path = GetEnv("LSAN_SYMBOLIZER_PATH");
+#endif
     cf.malloc_context_size = 30;
     cf.intercept_tls_get_addr = true;
     cf.detect_leaks = true;
@@ -71,7 +80,22 @@ static void InitializeFlags() {
   // Override from user-specified string.
   const char *lsan_default_options = __lsan_default_options();
   parser.ParseString(lsan_default_options);
-  parser.ParseStringFromEnv("LSAN_OPTIONS");
+#if SANITIZER_EMSCRIPTEN
+  char *options = (char*) EM_ASM_INT({
+    return withBuiltinMalloc(function () {
+      return allocateUTF8(Module['LSAN_OPTIONS'] || 0);
+    });
+  });
+  parser.ParseString(options);
+  emscripten_builtin_free(options);
+#else
+  parser.ParseString(GetEnv("LSAN_OPTIONS"));
+#endif // SANITIZER_EMSCRIPTEN
+
+#if SANITIZER_EMSCRIPTEN
+  if (common_flags()->malloc_context_size <= 1)
+    StackTrace::snapshot_stack = false;
+#endif // SANITIZER_EMSCRIPTEN
 
   InitializeCommonFlags();
 
@@ -97,7 +121,10 @@ extern "C" void __lsan_init() {
   InitTlsSize();
   InitializeInterceptors();
   InitializeThreadRegistry();
+#if !SANITIZER_EMSCRIPTEN
+  // Emscripten does not have signals
   InstallDeadlySignalHandlers(LsanOnDeadlySignal);
+#endif
   InitializeMainThread();
 
   if (common_flags()->detect_leaks && common_flags()->leak_check_at_exit)

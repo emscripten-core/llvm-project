@@ -393,6 +393,17 @@ INTERCEPTOR(int, pthread_atfork, void (*prepare)(), void (*parent)(),
 #define LSAN_MAYBE_INTERCEPT_PTHREAD_ATFORK
 #endif
 
+#if SANITIZER_EMSCRIPTEN
+extern "C" {
+  int emscripten_builtin_pthread_create(void *thread, void *attr,
+                                        void *(*callback)(void *), void *arg);
+  int emscripten_builtin_pthread_join(void *th, void **ret);
+  int emscripten_builtin_pthread_detach(void *th);
+  void *emscripten_builtin_malloc(size_t size);
+  void emscripten_builtin_free(void *);
+}
+#endif
+
 #if SANITIZER_INTERCEPT_STRERROR
 INTERCEPTOR(char *, strerror, int errnum) {
   __lsan::ScopedInterceptorDisabler disabler;
@@ -428,7 +439,11 @@ extern "C" void *__lsan_thread_start_func(void *arg) {
   while ((tid = atomic_load(&p->tid, memory_order_acquire)) == 0)
     internal_sched_yield();
   ThreadStart(tid, GetTid());
+#if SANITIZER_EMSCRIPTEN
+  emscripten_builtin_free(p);
+#else
   atomic_store(&p->tid, 0, memory_order_release);
+#endif
   return callback(param);
 }
 
@@ -444,10 +459,17 @@ INTERCEPTOR(int, pthread_create, void *th, void *attr,
   AdjustStackSize(attr);
   int detached = 0;
   pthread_attr_getdetachstate(attr, &detached);
+#if SANITIZER_EMSCRIPTEN
+  ThreadParam *p = (ThreadParam *) emscripten_builtin_malloc(sizeof(ThreadParam));
+  p->callback = callback;
+  p->param = param;
+  atomic_store(&p->tid, 0, memory_order_relaxed);
+#else
   ThreadParam p;
   p.callback = callback;
   p.param = param;
   atomic_store(&p.tid, 0, memory_order_relaxed);
+#endif
   int res;
   {
     // Ignore all allocations made by pthread_create: thread stack/TLS may be
@@ -455,15 +477,23 @@ INTERCEPTOR(int, pthread_create, void *th, void *attr,
     // the linked list it's stored in doesn't even hold valid pointers to the
     // objects, the latter are calculated by obscure pointer arithmetic.
     ScopedInterceptorDisabler disabler;
+#if SANITIZER_EMSCRIPTEN
+    res = REAL(pthread_create)(th, attr, __lsan_thread_start_func, p);
+#else
     res = REAL(pthread_create)(th, attr, __lsan_thread_start_func, &p);
+#endif
   }
   if (res == 0) {
     int tid = ThreadCreate(GetCurrentThread(), *(uptr *)th,
                            IsStateDetached(detached));
     CHECK_NE(tid, kMainTid);
+#if SANITIZER_EMSCRIPTEN
+    atomic_store(&p->tid, tid, memory_order_release);
+#else
     atomic_store(&p.tid, tid, memory_order_release);
     while (atomic_load(&p.tid, memory_order_acquire) != 0)
       internal_sched_yield();
+#endif
   }
   if (attr == &myattr)
     pthread_attr_destroy(&myattr);
@@ -488,6 +518,7 @@ INTERCEPTOR(int, pthread_detach, void *th) {
   return res;
 }
 
+#if !SANITIZER_EMSCRIPTEN
 INTERCEPTOR(void, _exit, int status) {
   if (status == 0 && HasReportedLeaks()) status = common_flags()->exitcode;
   REAL(_exit)(status);
@@ -495,14 +526,14 @@ INTERCEPTOR(void, _exit, int status) {
 
 #define COMMON_INTERCEPT_FUNCTION(name) INTERCEPT_FUNCTION(name)
 #include "sanitizer_common/sanitizer_signal_interceptors.inc"
-
-#endif  // SANITIZER_POSIX
+#endif
 
 namespace __lsan {
 
 void InitializeInterceptors() {
   // Fuchsia doesn't use interceptors that require any setup.
 #if !SANITIZER_FUCHSIA
+#if !SANITIZER_EMSCRIPTEN
   InitializeSignalInterceptors();
 
   INTERCEPT_FUNCTION(malloc);
@@ -532,6 +563,7 @@ void InitializeInterceptors() {
   LSAN_MAYBE_INTERCEPT_PTHREAD_ATFORK;
 
   LSAN_MAYBE_INTERCEPT_STRERROR;
+#endif  // !SANITIZER_EMSCRIPTEN
 
 #if !SANITIZER_NETBSD && !SANITIZER_FREEBSD
   if (pthread_key_create(&g_thread_finalize_key, &thread_finalize)) {
@@ -544,3 +576,4 @@ void InitializeInterceptors() {
 }
 
 } // namespace __lsan
+#endif // SANITIZER_EMSCRIPTEN

@@ -1,3 +1,6 @@
+// XXX EMSCRIPTEN: macros that would ordinarily be added from __config_site.in
+#define _LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS
+
 // -*- C++ -*-
 //===--------------------------- __config ---------------------------------===//
 //
@@ -104,7 +107,8 @@
 // Previously libc++ used "unsigned int" exclusively.
 #  define _LIBCPP_ABI_VARIANT_INDEX_TYPE_OPTIMIZATION
 // Unstable attempt to provide a more optimized std::function
-#  define _LIBCPP_ABI_OPTIMIZED_FUNCTION
+// XXX EMSCRIPTEN https://github.com/emscripten-core/emscripten/issues/11022
+//#  define _LIBCPP_ABI_OPTIMIZED_FUNCTION
 // All the regex constants must be distinct and nonzero.
 #  define _LIBCPP_ABI_REGEX_CONSTANTS_NONZERO
 // Use raw pointers, not wrapped ones, for std::span's iterator type.
@@ -324,7 +328,7 @@
    // random data even when using sandboxing mechanisms such as chroots,
    // Capsicum, etc.
 #  define _LIBCPP_USING_ARC4_RANDOM
-#elif defined(__Fuchsia__) || defined(__wasi__)
+#elif defined(__Fuchsia__) || defined(__wasi__) || defined(__EMSCRIPTEN__)
 #  define _LIBCPP_USING_GETENTROPY
 #elif defined(__native_client__)
    // NaCl's sandbox (which PNaCl also runs in) doesn't allow filesystem access,
@@ -1148,6 +1152,7 @@ extern "C" _LIBCPP_FUNC_VIS void __sanitizer_annotate_contiguous_container(
       defined(__sun__) || \
       defined(__MVS__) || \
       defined(_AIX) || \
+      defined(__EMSCRIPTEN__) || \
       (defined(__MINGW32__) && __has_include(<pthread.h>))
 #    define _LIBCPP_HAS_THREAD_API_PTHREAD
 #  elif defined(__Fuchsia__)

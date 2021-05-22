@@ -25,6 +25,10 @@
 #include "sanitizer_common/sanitizer_thread_registry.h"
 #include "sanitizer_common/sanitizer_tls_get_addr.h"
 
+#if SANITIZER_EMSCRIPTEN
+#include "lsan/lsan_allocator.h"
+#endif
+
 #if CAN_SANITIZE_LEAKS
 namespace __lsan {
 
@@ -111,7 +115,7 @@ static const char kStdSuppressions[] =
 
 void InitializeSuppressions() {
   CHECK_EQ(nullptr, suppression_ctx);
-  suppression_ctx = new (suppression_placeholder)
+  suppression_ctx = new (suppression_placeholder) // NOLINT
       LeakSuppressionContext(kSuppressionTypes, ARRAY_SIZE(kSuppressionTypes));
 }
 
@@ -191,7 +195,16 @@ void ScanRangeForPointers(uptr begin, uptr end,
   uptr pp = begin;
   if (pp % alignment)
     pp = pp + alignment - pp % alignment;
-  for (; pp + sizeof(void *) <= end; pp += alignment) {
+
+  // Emscripten in non-threaded mode stores thread_local variables in the
+  // same place as normal globals. This means allocator_cache must be skipped
+  // when scanning globals instead of when scanning thread-locals.
+#if SANITIZER_EMSCRIPTEN && !defined(__EMSCRIPTEN_PTHREADS__)
+  uptr cache_begin, cache_end;
+  GetAllocatorCacheRange(&cache_begin, &cache_end);
+#endif
+
+  for (; pp + sizeof(void *) <= end; pp += alignment) {  // NOLINT
     void *p = *reinterpret_cast<void **>(pp);
     if (!CanBeAHeapPointer(reinterpret_cast<uptr>(p))) continue;
     uptr chunk = PointsIntoChunk(p);
@@ -209,6 +222,14 @@ void ScanRangeForPointers(uptr begin, uptr end,
           pp, p, chunk, chunk + m.requested_size(), m.requested_size());
       continue;
     }
+
+#if SANITIZER_EMSCRIPTEN && !defined(__EMSCRIPTEN_PTHREADS__)
+    if (cache_begin <= pp && pp < cache_end) {
+      LOG_POINTERS("%p: skipping because it overlaps the cache %p-%p.\n",
+          pp, cache_begin, cache_end);
+      continue;
+    }
+#endif
 
     m.set_tag(tag);
     LOG_POINTERS("%p: found %p pointing into chunk %p-%p of size %zu.\n", pp, p,
@@ -274,6 +295,7 @@ static void ProcessThreadRegistry(Frontier *frontier) {
   }
 }
 
+#if !SANITIZER_EMSCRIPTEN
 // Scans thread data (stacks and TLS) for heap pointers.
 static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
                            Frontier *frontier) {
@@ -389,6 +411,7 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
   // Add pointers reachable from ThreadContexts
   ProcessThreadRegistry(frontier);
 }
+#endif // !SANITIZER_EMSCRIPTEN
 
 #endif  // SANITIZER_FUCHSIA
 
@@ -406,14 +429,22 @@ void ScanRootRegion(Frontier *frontier, const RootRegion &root_region,
                          kReachable);
 }
 
+#if SANITIZER_EMSCRIPTEN
+extern "C" uptr emscripten_get_heap_size();
+#endif
+
 static void ProcessRootRegion(Frontier *frontier,
                               const RootRegion &root_region) {
+#if SANITIZER_EMSCRIPTEN
+  ScanRootRegion(frontier, root_region, 0, emscripten_get_heap_size(), true);
+#else
   MemoryMappingLayout proc_maps(/*cache_enabled*/ true);
   MemoryMappedSegment segment;
   while (proc_maps.Next(&segment)) {
     ScanRootRegion(frontier, root_region, segment.start, segment.end,
                    segment.IsReadable());
   }
+#endif // SANITIZER_EMSCRIPTEN
 }
 
 // Scans root regions for heap pointers.
@@ -535,6 +566,7 @@ static void MarkInvalidPCCb(uptr chunk, void *arg) {
 // On all other platforms, this simply checks to ensure that the caller pc is
 // valid before reporting chunks as leaked.
 void ProcessPC(Frontier *frontier) {
+#if !SANITIZER_EMSCRIPTEN
   StackDepotReverseMap stack_depot_reverse_map;
   InvalidPCParam arg;
   arg.frontier = frontier;
@@ -542,6 +574,7 @@ void ProcessPC(Frontier *frontier) {
   arg.skip_linker_allocations =
       flags()->use_tls && flags()->use_ld_allocations && GetLinker() != nullptr;
   ForEachChunk(MarkInvalidPCCb, &arg);
+#endif
 }
 
 // Sets the appropriate tag on each chunk.
@@ -667,7 +700,9 @@ static void CheckForLeaksCallback(const SuspendedThreadsList &suspended_threads,
   CheckForLeaksParam *param = reinterpret_cast<CheckForLeaksParam *>(arg);
   CHECK(param);
   CHECK(!param->success);
+#if !SANITIZER_EMSCRIPTEN
   ReportUnsuspendedThreads(suspended_threads);
+#endif
   ClassifyAllChunks(suspended_threads, &param->frontier);
   ForEachChunk(CollectLeaksCb, &param->leak_report);
   // Clean up for subsequent leak checks. This assumes we did not overwrite any
@@ -784,8 +819,15 @@ Suppression *LeakSuppressionContext::GetSuppressionForStack(
   LazyInit();
   StackTrace stack = StackDepotGet(stack_trace_id);
   for (uptr i = 0; i < stack.size; i++) {
+#if SANITIZER_EMSCRIPTEN
+    // On Emscripten, the stack trace is the actual call site, not
+    // the code that would be executed after the return.
+    // Therefore, StackTrace::GetPreviousInstructionPc is not needed.
+    Suppression *s = GetSuppressionForAddr(stack.trace[i]);
+#else
     Suppression *s = GetSuppressionForAddr(
         StackTrace::GetPreviousInstructionPc(stack.trace[i]));
+#endif
     if (s) {
       suppressed_stacks_sorted = false;
       suppressed_stacks.push_back(stack_trace_id);
