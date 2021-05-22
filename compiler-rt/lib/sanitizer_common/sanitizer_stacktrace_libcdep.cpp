@@ -103,9 +103,15 @@ void StackTrace::PrintTo(InternalScopedString *output) const {
   }
 
   for (uptr i = 0; i < size && trace[i]; i++) {
+#if !SANITIZER_EMSCRIPTEN
     // PCs in stack traces are actually the return addresses, that is,
     // addresses of the next instructions after the call.
     uptr pc = GetPreviousInstructionPc(trace[i]);
+#else
+    // On Emscripten, the stack traces are obtained from JavaScript, and the
+    // addresses are not return addresses.
+    uptr pc = trace[i];
+#endif
     CHECK(printer.ProcessAddressFrames(pc));
   }
 
