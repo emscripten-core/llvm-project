@@ -59,7 +59,6 @@ struct AP32 {
   typedef __sanitizer::CompactSizeClassMap SizeClassMap;
   static const uptr kRegionSizeLog = 20;
   using AddressSpaceView = AddressSpaceViewTy;
-  using ByteMap = __lsan::ByteMapASVT<AddressSpaceView>;
   typedef NoOpMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
 };

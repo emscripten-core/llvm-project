@@ -272,16 +272,8 @@ uptr internal_write(fd_t fd, const void *buf, uptr count) {
 
 uptr internal_ftruncate(fd_t fd, uptr size) {
   sptr res;
-#if SANITIZER_EMSCRIPTEN
-  // The __SYSCALL_LL_O macros that musl uses to split 64-bit arguments
-  // doesn't work in C++ code so we have to do it manually.
-  union { long long ll; long l[2]; } split{ .ll = size };
-  HANDLE_EINTR(res, (sptr)internal_syscall(SYSCALL(ftruncate), fd,
-               split.l[0], split.l[1]));
-#else
   HANDLE_EINTR(res, (sptr)internal_syscall(SYSCALL(ftruncate), fd,
                (OFF_T)size));
-#endif
   return res;
 }
 
@@ -478,14 +470,18 @@ uptr internal_sched_yield() {
 #endif
 }
 
-#if !SANITIZER_EMSCRIPTEN
 void internal_usleep(u64 useconds) {
+#if SANITIZER_EMSCRIPTEN
+  usleep(useconds);
+#else
   struct timespec ts;
   ts.tv_sec = useconds / 1000000;
   ts.tv_nsec = (useconds % 1000000) * 1000;
   internal_syscall(SYSCALL(nanosleep), &ts, &ts);
+#endif
 }
 
+#if !SANITIZER_EMSCRIPTEN
 uptr internal_execve(const char *filename, char *const argv[],
                      char *const envp[]) {
   return internal_syscall(SYSCALL(execve), (uptr)filename, (uptr)argv,
@@ -711,6 +707,8 @@ void FutexWait(atomic_uint32_t *p, u32 cmp) {
   _umtx_op(p, UMTX_OP_WAIT_UINT, cmp, 0, 0);
 #    elif SANITIZER_NETBSD
   sched_yield();   /* No userspace futex-like synchronization */
+#    elif SANITIZER_EMSCRIPTEN
+  emscripten_futex_wait(p, cmp, INFINITY);
 #    else
   internal_syscall(SYSCALL(futex), (uptr)p, FUTEX_WAIT_PRIVATE, cmp, 0, 0, 0);
 #    endif
@@ -721,6 +719,8 @@ void FutexWake(atomic_uint32_t *p, u32 count) {
   _umtx_op(p, UMTX_OP_WAKE, count, 0, 0);
 #    elif SANITIZER_NETBSD
                    /* No userspace futex-like synchronization */
+#    elif SANITIZER_EMSCRIPTEN
+  emscripten_futex_wake(p, count);
 #    else
   internal_syscall(SYSCALL(futex), (uptr)p, FUTEX_WAKE_PRIVATE, count, 0, 0, 0);
 #    endif
