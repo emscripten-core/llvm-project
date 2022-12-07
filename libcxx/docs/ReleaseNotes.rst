@@ -141,11 +141,11 @@ Deprecations and Removals
   or upgrade to C++11 or later. It is possible to re-enable ``std::function`` in C++03 by defining
   ``_LIBCPP_ENABLE_CXX03_FUNCTION``. This option will be removed in LLVM 16.
 
-- ``unary_function`` and ``binary_function`` are no longer available in C++17 and C++20.
-  They can be re-enabled by defining ``_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION``.
-  They are also marked as ``[[deprecated]]`` in C++11 and later. To disable deprecation warnings
-  you have to define ``_LIBCPP_DISABLE_DEPRECATION_WARNINGS``. Note that this disables
-  all deprecation warnings.
+- ``unary_function`` and ``binary_function`` are now marked as ``[[deprecated]]`` in C++11 and later.
+  Deprecation warnings can be disabled by defining ``_LIBCPP_DISABLE_DEPRECATION_WARNINGS``, however
+  this disables all deprecation warnings, not only those for ``unary_function`` and ``binary_function``.
+  Also note that starting in LLVM 16, ``unary_function`` and ``binary_function`` will be removed entirely
+  (not only deprecated) in C++17 and above, as mandated by the Standard.
 
 - The contents of ``<codecvt>``, ``wstring_convert`` and ``wbuffer_convert`` have been marked as deprecated.
   To disable deprecation warnings you have to define ``_LIBCPP_DISABLE_DEPRECATION_WARNINGS``. Note that this
@@ -194,6 +194,14 @@ Upcoming Deprecations and Removals
 
 ABI Affecting Changes
 ---------------------
+- In freestanding mode, ``atomic<small enum class>`` does not contain a lock byte anymore if the platform
+  can implement lockfree atomics for that size. More specifically, in LLVM <= 11.0.1, an ``atomic<small enum class>``
+  would not contain a lock byte. This was broken in LLVM >= 12.0.0, where it started including a lock byte despite
+  the platform supporting lockfree atomics for that size. Starting in LLVM 15.0.1, the ABI for these types has been
+  restored to what it used to be (no lock byte), which is the most efficient implementation.
+
+  This ABI break only affects users that compile with ``-ffreestanding``, and only for ``atomic<T>`` where ``T``
+  is a non-builtin type that could be lockfree on the platform. See https://llvm.org/D133377 for more details.
 
 - The ``_LIBCPP_ABI_USE_CXX03_NULLPTR_EMULATION`` macro controlling whether we use an
   emulation for ``std::nullptr_t`` in C++03 mode has been removed. After this change,
