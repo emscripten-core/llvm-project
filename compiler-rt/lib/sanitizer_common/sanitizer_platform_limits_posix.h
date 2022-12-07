@@ -28,6 +28,9 @@
 #define SANITIZER_HAS_STAT64 0
 #define SANITIZER_HAS_STATFS64 0
 #endif
+#elif SANITIZER_EMSCRIPTEN
+#define SANITIZER_HAS_STAT64 0
+#define SANITIZER_HAS_STATFS64 0
 #else
 // Must be SANITIZER_LINUX then
 #define SANITIZER_HAS_STAT64 1
@@ -527,7 +530,9 @@ struct __sanitizer_dirent64 {
 };
 #endif
 
-#if defined(__x86_64__) && !defined(_LP64)
+#if SANITIZER_EMSCRIPTEN
+typedef int __sanitizer_clock_t;
+#elif defined(__x86_64__) && !defined(_LP64)
 typedef long long __sanitizer_clock_t;
 #else
 typedef long __sanitizer_clock_t;

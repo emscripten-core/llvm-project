@@ -258,7 +258,7 @@ uptr internal_close(fd_t fd) {
 }
 
 uptr internal_open(const char *filename, int flags) {
-#    if SANITIZER_LINUX
+#    if SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
   return internal_syscall(SYSCALL(openat), AT_FDCWD, (uptr)filename, flags);
 #else
   return internal_syscall(SYSCALL(open), (uptr)filename, flags);
@@ -266,7 +266,7 @@ uptr internal_open(const char *filename, int flags) {
 }
 
 uptr internal_open(const char *filename, int flags, u32 mode) {
-#    if SANITIZER_LINUX
+#    if SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
   return internal_syscall(SYSCALL(openat), AT_FDCWD, (uptr)filename, flags,
                           mode);
 #else
@@ -275,7 +275,7 @@ uptr internal_open(const char *filename, int flags, u32 mode) {
 }
 
 uptr internal_read(fd_t fd, void *buf, uptr count) {
-#ifdef __EMSCRIPTEN__
+#if SANITIZER_EMSCRIPTEN
   __wasi_iovec_t iov = { (uint8_t *)buf, count };
   size_t num;
   if (__wasi_syscall_ret(__wasi_fd_read(fd, &iov, 1, &num))) {
@@ -291,7 +291,7 @@ uptr internal_read(fd_t fd, void *buf, uptr count) {
 }
 
 uptr internal_write(fd_t fd, const void *buf, uptr count) {
-#ifdef __EMSCRIPTEN__
+#if SANITIZER_EMSCRIPTEN
   __wasi_ciovec_t iov = { (const uint8_t *)buf, count };
   size_t num;
   if (__wasi_syscall_ret(__wasi_fd_write(fd, &iov, 1, &num))) {
@@ -511,7 +511,7 @@ uptr internal_dup2(int oldfd, int newfd) {
 }
 
 uptr internal_readlink(const char *path, char *buf, uptr bufsize) {
-#    if SANITIZER_LINUX
+#    if SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
   return internal_syscall(SYSCALL(readlinkat), AT_FDCWD, (uptr)path, (uptr)buf,
                           bufsize);
 #else
@@ -520,7 +520,7 @@ uptr internal_readlink(const char *path, char *buf, uptr bufsize) {
 }
 
 uptr internal_unlink(const char *path) {
-#    if SANITIZER_LINUX
+#    if SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
   return internal_syscall(SYSCALL(unlinkat), AT_FDCWD, (uptr)path, 0);
 #else
   return internal_syscall(SYSCALL(unlink), (uptr)path);
@@ -531,7 +531,7 @@ uptr internal_rename(const char *oldpath, const char *newpath) {
 #  if (defined(__riscv) || defined(__loongarch__)) && defined(__linux__)
   return internal_syscall(SYSCALL(renameat2), AT_FDCWD, (uptr)oldpath, AT_FDCWD,
                           (uptr)newpath, 0);
-#  elif SANITIZER_LINUX
+#  elif SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
   return internal_syscall(SYSCALL(renameat), AT_FDCWD, (uptr)oldpath, AT_FDCWD,
                           (uptr)newpath);
 #  else
@@ -1007,7 +1007,7 @@ uptr internal_sigprocmask(int how, __sanitizer_sigset_t *set,
 #if SANITIZER_FREEBSD
   return internal_syscall(SYSCALL(sigprocmask), how, set, oldset);
 #elif SANITIZER_EMSCRIPTEN
-  return NULL;
+  return 0;
 #else
   __sanitizer_kernel_sigset_t *k_set = (__sanitizer_kernel_sigset_t *)set;
   __sanitizer_kernel_sigset_t *k_oldset = (__sanitizer_kernel_sigset_t *)oldset;
