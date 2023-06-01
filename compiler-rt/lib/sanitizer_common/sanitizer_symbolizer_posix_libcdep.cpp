@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_platform.h"
-#if SANITIZER_POSIX
+#if SANITIZER_POSIX && !SANITIZER_EMSCRIPTEN
 #include "sanitizer_allocator_internal.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
@@ -200,6 +200,7 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
   return true;
 }
 
+#if !SANITIZER_EMSCRIPTEN
 class Addr2LineProcess final : public SymbolizerProcess {
  public:
   Addr2LineProcess(const char *path, const char *module_name)
@@ -315,6 +316,7 @@ class Addr2LinePool final : public SymbolizerTool {
   static const uptr dummy_address_ =
       FIRST_32_SECOND_64(UINT32_MAX, UINT64_MAX);
 };
+#endif
 
 #  if SANITIZER_SUPPORTS_WEAK_HOOKS
 extern "C" {

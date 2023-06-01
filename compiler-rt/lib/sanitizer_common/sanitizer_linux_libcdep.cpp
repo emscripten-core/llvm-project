@@ -941,6 +941,7 @@ u64 MonotonicNanoTime() {
 }
 #endif  // SANITIZER_GLIBC && !SANITIZER_GO
 
+#if !SANITIZER_EMSCRIPTEN
 void ReExec() {
   const char *pathname = "/proc/self/exe";
 
@@ -972,6 +973,7 @@ void ReExec() {
   Printf("execve failed, errno %d\n", rverrno);
   Die();
 }
+#endif
 
 void UnmapFromTo(uptr from, uptr to) {
   if (to == from)

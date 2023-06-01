@@ -13,7 +13,7 @@
 // NetBSD uses libc calls directly
 #if !SANITIZER_NETBSD
 
-#if SANITIZER_FREEBSD || SANITIZER_APPLE || SANITIZER_SOLARIS
+#if SANITIZER_FREEBSD || SANITIZER_APPLE || SANITIZER_SOLARIS || SANITIZER_EMSCRIPTEN
 # define SYSCALL(name) SYS_ ## name
 #else
 # define SYSCALL(name) __NR_ ## name
