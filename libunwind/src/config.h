@@ -98,6 +98,7 @@
                                              SYMBOL_NAME(name)))               \
   extern "C" _LIBUNWIND_EXPORT __typeof(name) aliasname;
 #endif
+#elif defined(__EMSCRIPTEN__)
 #else
 #error Unsupported target
 #endif
