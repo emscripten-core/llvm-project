@@ -405,7 +405,9 @@ extern "C" SANITIZER_WEAK_ATTRIBUTE void __libc_iterate_dynamic_tls(
     pid_t, void (*cb)(void *, void *, uptr, void *), void *);
 #    endif
 
-#if !SANITIZER_EMSCRIPTEN
+#if SANITIZER_EMSCRIPTEN
+void ProcessThreads(SuspendedThreadsList const &, Frontier *, tid_t, uptr);
+#else
 static void ProcessThreadRegistry(Frontier *frontier) {
   InternalMmapVector<uptr> ptrs;
   GetAdditionalThreadContextPtrsLocked(&ptrs);

@@ -583,6 +583,12 @@ void FinishThreadLocked(u32 tid) {
 
 } // namespace __lsan
 
+namespace __sanitizer {
+ThreadRegistry *GetThreadRegistryLocked() {
+  return __lsan::GetAsanThreadRegistryLocked();
+}
+}  // namespace __sanitizer
+
 // ---------------------- Interface ---------------- {{{1
 using namespace __asan;
 
