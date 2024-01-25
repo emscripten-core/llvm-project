@@ -40,6 +40,7 @@ int emscripten_builtin_pthread_create(void *thread, void *attr,
                                       void *(*callback)(void *), void *arg);
 int emscripten_builtin_pthread_join(void *th, void **ret);
 int emscripten_builtin_pthread_detach(void *th);
+void emscripten_builtin_pthread_exit(void *th);
 }
 #endif
 
@@ -452,13 +453,21 @@ INTERCEPTOR(int, pthread_create, void *th, void *attr,
   ENSURE_LSAN_INITED;
   EnsureMainThreadIDIsCorrect();
 
+#if SANITIZER_EMSCRIPTEN
+  // In Emscripten sanitizer, attr can be nonzero but __ATTRP_C11_THREAD in case
+  // of C11 threads, in which case we need to run pthread_attr_init as well, so
+  // we treat __ATTRP_C11_THREAD like the nullptr in this function.
+  if (attr == __ATTRP_C11_THREAD)
+    attr = nullptr;
+#endif
+
   bool detached = [attr]() {
     int d = 0;
     return attr && !pthread_attr_getdetachstate(attr, &d) && IsStateDetached(d);
   }();
 
   __sanitizer_pthread_attr_t myattr;
-  if (!attr || attr == __ATTRP_C11_THREAD) {
+  if (!attr) {
     pthread_attr_init(&myattr);
     attr = &myattr;
   }
@@ -501,9 +510,9 @@ INTERCEPTOR(int, pthread_detach, void *thread) {
   return result;
 }
 
-INTERCEPTOR(int, pthread_exit, void *retval) {
+INTERCEPTOR(void, pthread_exit, void *retval) {
   GetThreadArgRetval().Finish(GetThreadSelf(), retval);
-  return REAL(pthread_exit)(retval);
+  REAL(pthread_exit)(retval);
 }
 
 #  if SANITIZER_INTERCEPT_TRYJOIN
