@@ -25,6 +25,10 @@
 # include <sys/mman.h>
 #endif
 
+#if SANITIZER_EMSCRIPTEN
+#include "emscripten_internal.h"
+#endif
+
 namespace __sanitizer {
 
 #if !SANITIZER_GO
@@ -63,7 +67,13 @@ void ReportErrorSummary(const char *error_type, const AddressInfo &info,
 }
 #endif
 
-#if !SANITIZER_FUCHSIA
+#if SANITIZER_EMSCRIPTEN
+
+static inline bool ReportSupportsColors() {
+  return _emscripten_sanitizer_use_colors();
+}
+
+#elif !SANITIZER_FUCHSIA
 
 bool ReportFile::SupportsColors() {
   SpinMutexLock l(mu);
@@ -80,7 +90,7 @@ static inline bool ReportSupportsColors() {
 // Fuchsia's logs always go through post-processing that handles colorization.
 static inline bool ReportSupportsColors() { return true; }
 
-#endif  // !SANITIZER_FUCHSIA
+#endif  // SANITIZER_EMSCRIPTEN, !SANITIZER_FUCHSIA
 
 bool ColorizeReports() {
   // FIXME: Add proper Windows support to AnsiColorDecorator and re-enable color

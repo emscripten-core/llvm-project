@@ -234,6 +234,7 @@ const LoadedModule *Symbolizer::FindModuleForAddress(uptr address) {
   return module;
 }
 
+#if !SANITIZER_EMSCRIPTEN
 // For now we assume the following protocol:
 // For each request of the form
 //   <module_name> <module_offset>
@@ -572,6 +573,7 @@ bool SymbolizerProcess::WriteToSymbolizer(const char *buffer, uptr length) {
   }
   return true;
 }
+#endif
 
 #endif  // !SANITIZER_SYMBOLIZER_MARKUP
 
