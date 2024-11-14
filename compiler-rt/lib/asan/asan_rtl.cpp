@@ -54,6 +54,7 @@ static void AsanDie() {
 
   WaitForDebugger(flags()->sleep_before_dying, "before dying");
 
+#if !SANITIZER_EMSCRIPTEN
   if (flags()->unmap_shadow_on_exit) {
     if (kMidMemBeg) {
       UnmapOrDie((void*)kLowShadowBeg, kMidMemBeg - kLowShadowBeg);
@@ -63,6 +64,7 @@ static void AsanDie() {
         UnmapOrDie((void*)kLowShadowBeg, kHighShadowEnd - kLowShadowBeg);
     }
   }
+#endif
 }
 
 static void CheckUnwind() {
@@ -324,6 +326,7 @@ static void asan_atexit() {
 }
 
 static void InitializeHighMemEnd() {
+#if !SANITIZER_EMSCRIPTEN
 #if !ASAN_FIXED_MAPPING
   kHighMemEnd = GetMaxUserVirtualAddress();
   // Increase kHighMemEnd to make sure it's properly
@@ -331,6 +334,7 @@ static void InitializeHighMemEnd() {
   kHighMemEnd |= (GetMmapGranularity() << ASAN_SHADOW_SCALE) - 1;
 #endif  // !ASAN_FIXED_MAPPING
   CHECK_EQ((kHighMemBeg % GetMmapGranularity()), 0);
+#endif  // !SANITIZER_EMSCRIPTEN
 }
 
 void PrintAddressSpaceLayout() {
@@ -449,12 +453,16 @@ static bool AsanInitInternal() {
 
   ReplaceSystemMalloc();
 
+#if !SANITIZER_EMSCRIPTEN
   DisableCoreDumperIfNecessary();
+#endif
 
   InitializeShadowMemory();
 
   AsanTSDInit(PlatformTSDDtor);
+#if !SANITIZER_EMSCRIPTEN
   InstallDeadlySignalHandlers(AsanOnDeadlySignal);
+#endif
 
   AllocatorOptions allocator_options;
   allocator_options.SetFrom(flags(), common_flags());
