@@ -71,7 +71,7 @@ void *__asan_memmove(void *to, const void *from, uptr size) {
   ASAN_MEMMOVE_IMPL(nullptr, to, from, size);
 }
 
-#if SANITIZER_FUCHSIA
+#if SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN
 
 // Fuchsia doesn't use sanitizer_common_interceptors.inc, but
 // the only things there it wants are these three.  Just define them
@@ -81,7 +81,7 @@ extern "C" decltype(__asan_memcpy) memcpy[[gnu::alias("__asan_memcpy")]];
 extern "C" decltype(__asan_memmove) memmove[[gnu::alias("__asan_memmove")]];
 extern "C" decltype(__asan_memset) memset[[gnu::alias("__asan_memset")]];
 
-#else  // SANITIZER_FUCHSIA
+#else  // SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN
 
 #define COMMON_INTERCEPTOR_MEMMOVE_IMPL(ctx, to, from, size) \
   do {                                                       \
@@ -103,4 +103,4 @@ extern "C" decltype(__asan_memset) memset[[gnu::alias("__asan_memset")]];
 
 #include "sanitizer_common/sanitizer_common_interceptors_memintrinsics.inc"
 
-#endif  // SANITIZER_FUCHSIA
+#endif  // SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN

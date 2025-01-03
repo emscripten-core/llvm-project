@@ -15,7 +15,7 @@
 #include "sanitizer_common/sanitizer_platform.h"
 #include "lsan_common.h"
 
-#if CAN_SANITIZE_LEAKS && (SANITIZER_LINUX || SANITIZER_NETBSD)
+#if CAN_SANITIZE_LEAKS && SANITIZER_LINUX
 #include <link.h>
 
 #include "sanitizer_common/sanitizer_common.h"
