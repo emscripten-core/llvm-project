@@ -19,8 +19,14 @@
 
 #include <stdlib.h>
 
+#if SANITIZER_EMSCRIPTEN
+#include <emscripten/heap.h>
+#include "emscripten_internal.h"
+#endif
+
 namespace __ubsan {
 
+#if !SANITIZER_EMSCRIPTEN
 static const char *GetFlag(const char *flag) {
   // We cannot call getenv() from inside a preinit array initializer
   if (SANITIZER_CAN_USE_PREINIT_ARRAY) {
@@ -29,6 +35,7 @@ static const char *GetFlag(const char *flag) {
     return getenv(flag);
   }
 }
+#endif
 
 Flags ubsan_flags;
 
@@ -50,7 +57,12 @@ void InitializeFlags() {
   {
     CommonFlags cf;
     cf.CopyFrom(*common_flags());
+    cf.print_summary = false;
+#if !SANITIZER_EMSCRIPTEN
+    // getenv on emscripten uses malloc, which we can't when using some sanitizers.
+    // You can't run external symbolizers anyway.
     cf.external_symbolizer_path = GetFlag("UBSAN_SYMBOLIZER_PATH");
+#endif
     OverrideCommonFlags(cf);
   }
 
@@ -64,7 +76,14 @@ void InitializeFlags() {
   // Override from user-specified string.
   parser.ParseString(__ubsan_default_options());
   // Override from environment variable.
+#if SANITIZER_EMSCRIPTEN
+  char* options = _emscripten_sanitizer_get_option("UBSAN_OPTIONS");
+  parser.ParseString(options);
+  emscripten_builtin_free(options);
+#else
   parser.ParseStringFromEnv("UBSAN_OPTIONS");
+#endif // SANITIZER_EMSCRIPTEN
+
   InitializeCommonFlags();
   if (Verbosity()) ReportUnrecognizedFlags();
 

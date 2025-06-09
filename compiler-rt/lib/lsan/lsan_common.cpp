@@ -25,6 +25,11 @@
 #include "sanitizer_common/sanitizer_thread_registry.h"
 #include "sanitizer_common/sanitizer_tls_get_addr.h"
 
+#if SANITIZER_EMSCRIPTEN
+#include "lsan/lsan_allocator.h"
+#include "emscripten/heap.h"
+#endif
+
 #if CAN_SANITIZE_LEAKS
 
 #  if SANITIZER_APPLE
@@ -128,7 +133,7 @@ static const char kStdSuppressions[] =
 
 void InitializeSuppressions() {
   CHECK_EQ(nullptr, suppression_ctx);
-  suppression_ctx = new (suppression_placeholder)
+  suppression_ctx = new (suppression_placeholder) // NOLINT
       LeakSuppressionContext(kSuppressionTypes, ARRAY_SIZE(kSuppressionTypes));
 }
 
@@ -205,6 +210,14 @@ static inline void *TransformPointer(void *p) {
 // valid before reporting chunks as leaked.
 bool LeakSuppressionContext::SuppressInvalid(const StackTrace &stack) {
   uptr caller_pc = GetCallerPC(stack);
+#if SANITIZER_EMSCRIPTEN
+  // caller_pr will always be 0 if we use malloc_context_size=0 (or 1) which
+  // we recommend under emscripten to save memory.  It seems that this setting
+  // now (inadvertently?) suppreses all leaks.
+  // See https://reviews.llvm.org/D115319#3526676.
+  if (!caller_pc)
+    return false;
+#endif
   // If caller_pc is unknown, this chunk may be allocated in a coroutine. Mark
   // it as reachable, as we can't properly report its allocation stack anyway.
   return !caller_pc ||
@@ -334,7 +347,16 @@ void ScanForPointers(uptr begin, uptr end, Frontier *frontier,
   uptr pp = begin;
   if (pp % alignment)
     pp = pp + alignment - pp % alignment;
-  for (; pp + sizeof(void *) <= end; pp += alignment) {
+
+  // Emscripten in non-threaded mode stores thread_local variables in the
+  // same place as normal globals. This means allocator_cache must be skipped
+  // when scanning globals instead of when scanning thread-locals.
+#if SANITIZER_EMSCRIPTEN && !defined(__EMSCRIPTEN_PTHREADS__)
+  uptr cache_begin, cache_end;
+  GetAllocatorCacheRange(&cache_begin, &cache_end);
+#endif
+
+  for (; pp + sizeof(void *) <= end; pp += alignment) {  // NOLINT
     void *p = accessor.LoadPtr(pp);
 #  if SANITIZER_APPLE
     p = TransformPointer(p);
@@ -360,6 +382,14 @@ void ScanForPointers(uptr begin, uptr end, Frontier *frontier,
           m.requested_size());
       continue;
     }
+
+#if SANITIZER_EMSCRIPTEN && !defined(__EMSCRIPTEN_PTHREADS__)
+    if (cache_begin <= pp && pp < cache_end) {
+      LOG_POINTERS("%p: skipping because it overlaps the cache %p-%p.\n",
+          (void*)pp, (void*)cache_begin, (void*)cache_end);
+      continue;
+    }
+#endif
 
     m.set_tag(tag);
     LOG_POINTERS("%p: found %p pointing into chunk %p-%p of size %zu.\n",
@@ -422,6 +452,9 @@ extern "C" SANITIZER_WEAK_ATTRIBUTE void __libc_iterate_dynamic_tls(
     pid_t, void (*cb)(void *, void *, uptr, void *), void *);
 #    endif
 
+#if SANITIZER_EMSCRIPTEN
+void ProcessThreads(SuspendedThreadsList const &, Frontier *, tid_t, uptr);
+#else
 static void ProcessThreadRegistry(Frontier *frontier) {
   InternalMmapVector<uptr> ptrs;
   GetAdditionalThreadContextPtrsLocked(&ptrs);
@@ -606,6 +639,7 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
   // Add pointers reachable from ThreadContexts
   ProcessThreadRegistry(frontier);
 }
+#endif // !SANITIZER_EMSCRIPTEN
 
 #  endif  // SANITIZER_FUCHSIA
 
@@ -648,12 +682,16 @@ void ScanRootRegions(Frontier *frontier,
 static void ProcessRootRegions(Frontier *frontier) {
   if (!flags()->use_root_regions || !HasRootRegions())
     return;
+  InternalMmapVector<Region> mapped_regions;
+#if SANITIZER_EMSCRIPTEN
+  mapped_regions.push_back({0, emscripten_get_heap_size()});
+#else
   MemoryMappingLayout proc_maps(/*cache_enabled*/ true);
   MemoryMappedSegment segment;
-  InternalMmapVector<Region> mapped_regions;
   while (proc_maps.Next(&segment))
     if (segment.IsReadable())
       mapped_regions.push_back({segment.start, segment.end});
+#endif // SANITIZER_EMSCRIPTEN
   ScanRootRegions(frontier, mapped_regions);
 }
 
@@ -777,7 +815,7 @@ void LeakSuppressionContext::PrintMatchedSuppressions() {
   Printf("%s\n\n", line);
 }
 
-#  if SANITIZER_FUCHSIA
+#  if SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN
 
 // Fuchsia provides a libc interface that guarantees all threads are
 // covered, and SuspendedThreadList is never really used.
@@ -785,7 +823,7 @@ static bool ReportUnsuspendedThreads(const SuspendedThreadsList &) {
   return true;
 }
 
-#  else  // !SANITIZER_FUCHSIA
+#  else  // !(SANITIZER_FUCHSIA || SANITIZER_EMSCRIPTEN)
 
 static bool ReportUnsuspendedThreads(
     const SuspendedThreadsList &suspended_threads) {

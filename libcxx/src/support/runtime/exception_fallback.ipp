@@ -33,6 +33,7 @@ terminate_handler set_terminate(terminate_handler func) noexcept {
 
 terminate_handler get_terminate() noexcept { return __libcpp_atomic_load(&__terminate_handler); }
 
+#ifndef __EMSCRIPTEN__ // We provide this in JS
 [[noreturn]] void terminate() noexcept {
 #if _LIBCPP_HAS_EXCEPTIONS
   try {
@@ -47,13 +48,16 @@ terminate_handler get_terminate() noexcept { return __libcpp_atomic_load(&__term
   }
 #endif // _LIBCPP_HAS_EXCEPTIONS
 }
+#endif // !__EMSCRIPTEN__
 
+#if !defined(__EMSCRIPTEN__)
 bool uncaught_exception() noexcept { return uncaught_exceptions() > 0; }
 
 int uncaught_exceptions() noexcept {
 #warning uncaught_exception not yet implemented
   __libcpp_verbose_abort("uncaught_exceptions not yet implemented\n");
 }
+#endif // !__EMSCRIPTEN__
 
 exception::~exception() noexcept {}
 

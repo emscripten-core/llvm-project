@@ -41,6 +41,9 @@ void AsanOnDeadlySignal(int signo, void *siginfo, void *context) {
 }
 
 bool PlatformUnpoisonStacks() {
+#if SANITIZER_EMSCRIPTEN
+  return false;
+#else
   stack_t signal_stack;
   CHECK_EQ(0, sigaltstack(nullptr, &signal_stack));
   uptr sigalt_bottom = (uptr)signal_stack.ss_sp;
@@ -64,6 +67,7 @@ bool PlatformUnpoisonStacks() {
                        &tls_end);
   UnpoisonStack(stack_begin, stack_end, "default");
   return true;
+#endif
 }
 
 // ---------------------- TSD ---------------- {{{1
