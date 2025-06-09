@@ -15,7 +15,8 @@
 #    define SANITIZER_REDEFINE_BUILTINS_H
 
 // The asm hack only works with GCC and Clang.
-#    if !defined(_WIN32)
+// XXX Emscripten This does not work in Wasm.
+#    if !defined(_WIN32) && !defined(__wasm__)
 
 asm(R"(
     .set memcpy, __sanitizer_internal_memcpy
@@ -52,7 +53,7 @@ using vector = Define_SANITIZER_COMMON_NO_REDEFINE_BUILTINS_in_cpp_file;
 }  // namespace std
 
 #      endif  // __cpluplus
-#    endif    // !_WIN32
+#    endif    // !_WIN32 && !__wasm__
 
 #  endif  // SANITIZER_REDEFINE_BUILTINS_H
 #endif    // SANITIZER_COMMON_NO_REDEFINE_BUILTINS

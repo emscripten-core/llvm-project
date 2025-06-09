@@ -24,6 +24,12 @@
 #include "ubsan/ubsan_flags.h"
 #include "ubsan/ubsan_platform.h"
 
+#if SANITIZER_EMSCRIPTEN
+#include <emscripten/heap.h>
+#include "emscripten_internal.h"
+#endif
+
+
 namespace __asan {
 
 Flags asan_flags_dont_use_directly;  // use via flags().
@@ -70,7 +76,11 @@ static void InitializeDefaultFlags() {
     CommonFlags cf;
     cf.CopyFrom(*common_flags());
     cf.detect_leaks = cf.detect_leaks && CAN_SANITIZE_LEAKS;
+#if !SANITIZER_EMSCRIPTEN
+    // getenv on emscripten uses malloc, which we can't when using LSan.
+    // You can't run external symbolizer executables anyway.
     cf.external_symbolizer_path = GetEnv("ASAN_SYMBOLIZER_PATH");
+#endif
     cf.malloc_context_size = kDefaultMallocContextSize;
     cf.intercept_tls_get_addr = true;
     cf.exitcode = 1;
@@ -129,6 +139,23 @@ static void InitializeDefaultFlags() {
   lsan_parser.ParseString(lsan_default_options);
 #endif
 
+#if SANITIZER_EMSCRIPTEN
+  char *options;
+  // Override from Emscripten Module.
+  // TODO: add EM_ASM_I64 and avoid using a double for a 64-bit pointer.
+#define MAKE_OPTION_LOAD(parser, name) \
+    options = _emscripten_sanitizer_get_option(name); \
+    parser.ParseString(options); \
+    emscripten_builtin_free(options);
+
+  MAKE_OPTION_LOAD(asan_parser, "ASAN_OPTIONS");
+#if CAN_SANITIZE_LEAKS
+  MAKE_OPTION_LOAD(lsan_parser, "LSAN_OPTIONS");
+#endif
+#if CAN_SANITIZE_UB
+  MAKE_OPTION_LOAD(ubsan_parser, "UBSAN_OPTIONS");
+#endif
+#else
   // Override from command line.
   asan_parser.ParseStringFromEnv("ASAN_OPTIONS");
 #if CAN_SANITIZE_LEAKS
@@ -137,9 +164,15 @@ static void InitializeDefaultFlags() {
 #if CAN_SANITIZE_UB
   ubsan_parser.ParseStringFromEnv("UBSAN_OPTIONS");
 #endif
+#endif // SANITIZER_EMSCRIPTEN
 
   InitializeCommonFlags();
 
+#if SANITIZER_EMSCRIPTEN
+  if (common_flags()->malloc_context_size <= 1)
+    StackTrace::snapshot_stack = false;
+#endif // SANITIZER_EMSCRIPTEN
+       //
   // TODO(samsonov): print all of the flags (ASan, LSan, common).
   DisplayHelpMessages(&asan_parser);
 }

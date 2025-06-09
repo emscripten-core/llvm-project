@@ -31,6 +31,18 @@
 #include "lsan_common.h"
 #include "lsan_thread.h"
 
+#if SANITIZER_EMSCRIPTEN
+#define __ATTRP_C11_THREAD ((void*)(uptr)-1)
+#include <emscripten/heap.h>
+extern "C" {
+int emscripten_builtin_pthread_create(void *thread, void *attr,
+                                      void *(*callback)(void *), void *arg);
+int emscripten_builtin_pthread_join(void *th, void **ret);
+int emscripten_builtin_pthread_detach(void *th);
+void emscripten_builtin_pthread_exit(void *th);
+}
+#endif
+
 #include <stddef.h>
 
 using namespace __lsan;
@@ -440,6 +452,14 @@ INTERCEPTOR(int, pthread_create, void *th, void *attr,
   ENSURE_LSAN_INITED;
   EnsureMainThreadIDIsCorrect();
 
+#if SANITIZER_EMSCRIPTEN
+  // In Emscripten sanitizer, attr can be nonzero but __ATTRP_C11_THREAD in case
+  // of C11 threads, in which case we need to run pthread_attr_init as well, so
+  // we treat __ATTRP_C11_THREAD like the nullptr in this function.
+  if (attr == __ATTRP_C11_THREAD)
+    attr = nullptr;
+#endif
+
   bool detached = [attr]() {
     int d = 0;
     return attr && !pthread_attr_getdetachstate(attr, &d) && IsStateDetached(d);
@@ -526,6 +546,7 @@ INTERCEPTOR(int, pthread_timedjoin_np, void *thread, void **ret,
 
 DEFINE_INTERNAL_PTHREAD_FUNCTIONS
 
+#if !SANITIZER_EMSCRIPTEN
 INTERCEPTOR(void, _exit, int status) {
   if (status == 0 && HasReportedLeaks()) status = common_flags()->exitcode;
   REAL(_exit)(status);
@@ -534,14 +555,14 @@ INTERCEPTOR(void, _exit, int status) {
 #define COMMON_INTERCEPT_FUNCTION(name) INTERCEPT_FUNCTION(name)
 #define SIGNAL_INTERCEPTOR_ENTER() ENSURE_LSAN_INITED
 #include "sanitizer_common/sanitizer_signal_interceptors.inc"
-
-#endif  // SANITIZER_POSIX
+#endif
 
 namespace __lsan {
 
 void InitializeInterceptors() {
   // Fuchsia doesn't use interceptors that require any setup.
 #if !SANITIZER_FUCHSIA
+#if !SANITIZER_EMSCRIPTEN
   __interception::DoesNotSupportStaticLinking();
   InitializeSignalInterceptors();
 
@@ -575,6 +596,7 @@ void InitializeInterceptors() {
   LSAN_MAYBE_INTERCEPT_PTHREAD_ATFORK;
 
   LSAN_MAYBE_INTERCEPT_STRERROR;
+#endif  // !SANITIZER_EMSCRIPTEN
 
 #if !SANITIZER_NETBSD && !SANITIZER_FREEBSD
   if (pthread_key_create(&g_thread_finalize_key, &thread_finalize)) {
@@ -587,3 +609,4 @@ void InitializeInterceptors() {
 }
 
 } // namespace __lsan
+#endif // SANITIZER_EMSCRIPTEN

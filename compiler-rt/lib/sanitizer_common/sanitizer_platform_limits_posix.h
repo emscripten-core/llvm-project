@@ -14,7 +14,7 @@
 #ifndef SANITIZER_PLATFORM_LIMITS_POSIX_H
 #define SANITIZER_PLATFORM_LIMITS_POSIX_H
 
-#if SANITIZER_LINUX || SANITIZER_APPLE
+#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_EMSCRIPTEN
 
 #include "sanitizer_internal_defs.h"
 #include "sanitizer_platform.h"
@@ -29,7 +29,11 @@
 #define SANITIZER_HAS_STAT64 0
 #define SANITIZER_HAS_STATFS64 0
 #endif
-#elif SANITIZER_GLIBC || SANITIZER_ANDROID
+#elif SANITIZER_EMSCRIPTEN
+#define SANITIZER_HAS_STAT64 0
+#define SANITIZER_HAS_STATFS64 0
+#else
+// Must be SANITIZER_LINUX then
 #define SANITIZER_HAS_STAT64 1
 #define SANITIZER_HAS_STATFS64 1
 #endif
@@ -529,13 +533,15 @@ struct __sanitizer_dirent64 {
 extern unsigned struct_sock_fprog_sz;
 #endif
 
-#if defined(__x86_64__) && !defined(_LP64)
+#if SANITIZER_EMSCRIPTEN
+typedef int __sanitizer_clock_t;
+#elif defined(__x86_64__) && !defined(_LP64)
 typedef long long __sanitizer_clock_t;
 #else
 typedef long __sanitizer_clock_t;
 #endif
 
-#if SANITIZER_LINUX
+#if SANITIZER_LINUX || SANITIZER_EMSCRIPTEN
 typedef int __sanitizer_clockid_t;
 typedef unsigned long long __sanitizer_eventfd_t;
 #endif
@@ -589,6 +595,8 @@ struct __sanitizer_sigset_t {
   // The size is determined by looking at sizeof of real sigset_t on linux.
   uptr val[128 / sizeof(uptr)];
 };
+#elif SANITIZER_EMSCRIPTEN
+typedef unsigned long __sanitizer_sigset_t;
 #endif
 
 struct __sanitizer_siginfo_pad {
