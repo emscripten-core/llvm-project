@@ -19,7 +19,8 @@
 
 #if !SANITIZER_LINUX && !SANITIZER_FREEBSD && !SANITIZER_APPLE &&    \
     !SANITIZER_NETBSD && !SANITIZER_WINDOWS && !SANITIZER_FUCHSIA && \
-    !SANITIZER_SOLARIS && !SANITIZER_HAIKU && !SANITIZER_AIX
+    !SANITIZER_SOLARIS && !SANITIZER_HAIKU && !SANITIZER_AIX && \
+    !SANITIZER_EMSCRIPTEN
 #  error "Interception doesn't work on this operating system."
 #endif
 
@@ -178,6 +179,10 @@ const interpose_substitution substitution_##func_name[]             \
 #  define DECLARE_WRAPPER(ret_type, func, ...) \
     extern "C" ret_type func(__VA_ARGS__)      \
         __attribute__((alias("__interceptor_" #func), visibility("default")));
+#elif SANITIZER_EMSCRIPTEN
+# define WRAP(x) x
+# define INTERCEPTOR_ATTRIBUTE
+# define DECLARE_WRAPPER(ret_type, func, ...)
 #elif !SANITIZER_FUCHSIA  // LINUX, FREEBSD, NETBSD, SOLARIS
 # define INTERCEPTOR_ATTRIBUTE __attribute__((visibility("default")))
 # if ASM_INTERCEPTOR_TRAMPOLINE_SUPPORT
@@ -261,6 +266,13 @@ const interpose_substitution substitution_##func_name[]             \
 # define INTERCEPTOR_ATTRIBUTE __attribute__((visibility("default")))
 # define REAL(x) __unsanitized_##x
 # define DECLARE_REAL(ret_type, func, ...)
+#elif SANITIZER_EMSCRIPTEN
+// Sanitizer runtimes on Emscripten just define functions directly to override
+// the libc functions. If the real version is really needed, they can be defined
+// with the emscripten_builtin_ prefix.
+# define REAL(x) emscripten_builtin_##x
+# define DECLARE_REAL(ret_type, func, ...) \
+    extern "C" ret_type REAL(func)(__VA_ARGS__);
 #elif !SANITIZER_APPLE
 # define PTR_TO_REAL(x) real_##x
 # define REAL(x) __interception::PTR_TO_REAL(x)
@@ -299,7 +311,7 @@ const interpose_substitution substitution_##func_name[]             \
 // macros does its job. In exceptional cases you may need to call REAL(foo)
 // without defining INTERCEPTOR(..., foo, ...). For example, if you override
 // foo with an interceptor for other function.
-#if !SANITIZER_APPLE && !SANITIZER_FUCHSIA
+#if !SANITIZER_APPLE && !SANITIZER_FUCHSIA && !SANITIZER_EMSCRIPTEN
 #  define DEFINE_REAL(ret_type, func, ...)            \
     typedef ret_type (*FUNC_TYPE(func))(__VA_ARGS__); \
     namespace __interception {                        \
@@ -383,7 +395,7 @@ inline void DoesNotSupportStaticLinking() {}
 #  define INTERCEPT_FUNCTION_VER(func, symver) INTERCEPT_FUNCTION_AIX(func)
 
 #elif SANITIZER_LINUX || SANITIZER_FREEBSD || SANITIZER_NETBSD || \
-    SANITIZER_SOLARIS || SANITIZER_HAIKU
+    SANITIZER_SOLARIS || SANITIZER_HAIKU || SANITIZER_EMSCRIPTEN
 
 #  include "interception_linux.h"
 #  define INTERCEPT_FUNCTION(func) INTERCEPT_FUNCTION_LINUX_OR_FREEBSD(func)

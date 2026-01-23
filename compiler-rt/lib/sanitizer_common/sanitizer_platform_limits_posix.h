@@ -14,7 +14,8 @@
 #ifndef SANITIZER_PLATFORM_LIMITS_POSIX_H
 #define SANITIZER_PLATFORM_LIMITS_POSIX_H
 
-#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU
+#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU || \
+    SANITIZER_EMSCRIPTEN
 
 #  include "sanitizer_internal_defs.h"
 #  include "sanitizer_mallinfo.h"
@@ -29,9 +30,18 @@
 #      define SANITIZER_HAS_STAT64 0
 #      define SANITIZER_HAS_STATFS64 0
 #    endif
-#  elif SANITIZER_GLIBC || SANITIZER_ANDROID
+#  elif SANITIZER_EMSCRIPTEN
+#    define SANITIZER_HAS_STAT64 0
+#    define SANITIZER_HAS_STATFS64 0
+#  else
+// Must be SANITIZER_LINUX then
 #    define SANITIZER_HAS_STAT64 1
 #    define SANITIZER_HAS_STATFS64 1
+#  endif
+
+#  if SANITIZER_EMSCRIPTEN
+#    include <signal.h>  // For sigset_t
+#    include <time.h>    // For clock_t and clockid_t
 #  endif
 
 #  if defined(__sparc__)
@@ -571,7 +581,9 @@ struct __sanitizer_dirent64 {
 extern unsigned struct_sock_fprog_sz;
 #  endif
 
-#  if SANITIZER_HAIKU
+#  if SANITIZER_EMSCRIPTEN
+typedef clock_t __sanitizer_clock_t;
+#  elif SANITIZER_HAIKU
 typedef int __sanitizer_clock_t;
 #  elif defined(__x86_64__) && !defined(_LP64)
 typedef long long __sanitizer_clock_t;
@@ -582,6 +594,9 @@ typedef long __sanitizer_clock_t;
 #  if SANITIZER_LINUX || SANITIZER_HAIKU
 typedef int __sanitizer_clockid_t;
 typedef unsigned long long __sanitizer_eventfd_t;
+#  elif SANITIZER_EMSCRIPTEN
+typedef clockid_t __sanitizer_clockid_t;
+// eventfd is Unix-specific.
 #  endif
 
 #  if SANITIZER_LINUX
@@ -635,6 +650,8 @@ struct __sanitizer_sigset_t {
   // The size is determined by looking at sizeof of real sigset_t on linux.
   uptr val[128 / sizeof(uptr)];
 };
+#  elif SANITIZER_EMSCRIPTEN
+typedef sigset_t __sanitizer_sigset_t;
 #  endif
 
 struct __sanitizer_siginfo_pad {
@@ -1591,6 +1608,7 @@ extern const int si_SEGV_ACCERR;
 typedef void *__sanitizer_timer_t;
 #  endif
 
-#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU
+#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU ||
+        // SANITIZER_EMSCRIPTEN
 
 #endif
