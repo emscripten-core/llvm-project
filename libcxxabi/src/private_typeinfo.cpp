@@ -1543,5 +1543,64 @@ __base_class_type_info::search_below_dst(__dynamic_cast_info* info,
                                       not_public_path,
                                   use_strcmp);
 }
+}  // __cxxabiv1
+
+
+// XXX EMSCRIPTEN
+#if defined(__wasm__) && !defined(__WASM_EXCEPTIONS__)
+
+#include "cxa_exception.h"
+
+namespace __cxxabiv1
+{
+
+// These functions are used by the emscripten-style exception handling
+// mechanism.
+// Note that they need to be included even in the `-noexcept` build of
+// libc++abi to support the case where some parts of a project are built
+// with exception catching enabled, but at link time exception catching
+// is disabled.  In this case dependencies to these functions (and the JS
+// functions which call them) will still exist in the final build.
+extern "C" {
+
+int __cxa_can_catch(__shim_type_info* catchType, __shim_type_info* excpType, void **thrown) {
+  //std::type_info *t1 = static_cast<std::type_info*>(catchType);
+  //std::type_info *t2 = static_cast<std::type_info*>(excpType);
+  //printf("can %s catch %s (%p)?\n", t1->name(), t2->name(), thrown);
+
+  void *temp = *thrown;
+  int ret = catchType->can_catch(excpType, temp);
+  if (ret) *thrown = temp; // apply changes only if we are catching
+  return ret;
+}
+
+static
+inline
+__cxa_exception*
+cxa_exception_from_thrown_object(void* thrown_object)
+{
+    return static_cast<__cxa_exception*>(thrown_object) - 1;
+}
+
+void *__cxa_get_exception_ptr(void *thrown_object) throw() {
+    // Get pointer which is expected to be received by catch clause in C++ code.
+    // It may be adjusted when the pointer is casted to some of the exception
+    // object base classes (e.g. when virtual inheritance is used). When a pointer
+    // is thrown this method should return the thrown pointer itself.
+    // Work around a fastcomp bug, this code is still included for some reason in
+    // a build without exceptions support.
+    __cxa_exception* ex = cxa_exception_from_thrown_object(thrown_object);
+    bool is_pointer = !!dynamic_cast<__pointer_type_info*>(ex->exceptionType);
+    if (is_pointer)
+        return *(void**)thrown_object;
+    if (ex->adjustedPtr)
+        return ex->adjustedPtr;
+    return ex;
+}
+
+}
 
 }  // __cxxabiv1
+
+#endif // __wasm__ && !__WASM_EXCEPTIONS__
+

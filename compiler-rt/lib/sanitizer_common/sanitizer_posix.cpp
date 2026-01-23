@@ -96,14 +96,10 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
   uptr res = map_res;
   if (!IsAligned(res, alignment)) {
     res = (map_res + alignment - 1) & ~(alignment - 1);
+#ifndef SANITIZER_EMSCRIPTEN
+    // Emscripten's fake mmap doesn't support partial unmapping
     UnmapOrDie((void*)map_res, res - map_res);
-  }
-  uptr map_end = map_res + map_size;
-  uptr end = res + size;
-  end = RoundUpTo(end, GetPageSizeCached());
-  if (end != map_end) {
-    CHECK_LT(end, map_end);
-    UnmapOrDie((void*)end, map_end - end);
+#endif
   }
   return (void*)res;
 }
@@ -147,15 +143,27 @@ void *MmapFixedOrDieOnFatalError(uptr fixed_addr, uptr size, const char *name) {
 }
 
 bool MprotectNoAccess(uptr addr, uptr size) {
+#if SANITIZER_EMSCRIPTEN
+  return true;
+#else
   return 0 == internal_mprotect((void*)addr, size, PROT_NONE);
+#endif
 }
 
 bool MprotectReadOnly(uptr addr, uptr size) {
+#if SANITIZER_EMSCRIPTEN
+  return true;
+#else
   return 0 == internal_mprotect((void *)addr, size, PROT_READ);
+#endif
 }
 
 bool MprotectReadWrite(uptr addr, uptr size) {
+#if SANITIZER_EMSCRIPTEN
+  return true;
+#else
   return 0 == internal_mprotect((void *)addr, size, PROT_READ | PROT_WRITE);
+#endif
 }
 
 #if !SANITIZER_APPLE
@@ -225,6 +233,16 @@ void *MapWritableFileToMemory(void *addr, uptr size, fd_t fd, OFF_T offset) {
   return (void *)p;
 }
 
+#if SANITIZER_EMSCRIPTEN
+bool MemoryRangeIsAvailable(uptr /*range_start*/, uptr /*range_end*/) {
+  // TODO: actually implement this.
+  return true;
+}
+
+void DumpProcessMap() {
+  Report("Cannot dump memory map on emscripten");
+}
+#else
 static inline bool IntervalsAreSeparate(uptr start1, uptr end1,
                                         uptr start2, uptr end2) {
   CHECK(start1 <= end1);
@@ -266,6 +284,7 @@ void DumpProcessMap() {
   UnmapOrDie(filename, kBufSize);
 }
 #endif
+#endif
 
 const char *GetPwd() {
   return GetEnv("PWD");
@@ -286,6 +305,10 @@ void ReportFile::Write(const char *buffer, uptr length) {
 }
 
 bool GetCodeRangeForFile(const char *module, uptr *start, uptr *end) {
+#if SANITIZER_EMSCRIPTEN
+  // Code is not mapped in memory in Emscripten, so this operation is meaningless
+  // and thus always fails.
+#else
   MemoryMappingLayout proc_maps(/*cache_enabled*/false);
   InternalMmapVector<char> buff(kMaxPathLength);
   MemoryMappedSegment segment(buff.data(), buff.size());
@@ -297,6 +320,7 @@ bool GetCodeRangeForFile(const char *module, uptr *start, uptr *end) {
       return true;
     }
   }
+#endif
   return false;
 }
 
