@@ -11,7 +11,7 @@
 // Sizes and layouts of platform-specific POSIX data structures.
 //===----------------------------------------------------------------------===//
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__EMSCRIPTEN__)
 // Tests in this file assume that off_t-dependent data structures match the
 // libc ABI. For example, struct dirent here is what readdir() function (as
 // exported from libc) returns, and not the user-facing "dirent", which
@@ -24,7 +24,8 @@
 // Must go after undef _FILE_OFFSET_BITS.
 #include "sanitizer_platform.h"
 
-#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU
+#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU || \
+    SANITIZER_EMSCRIPTEN
 // Must go after undef _FILE_OFFSET_BITS.
 #include "sanitizer_glibc_version.h"
 
@@ -60,7 +61,7 @@
 #include <net/route.h>
 #endif
 
-#if !SANITIZER_ANDROID
+#if !SANITIZER_ANDROID && !SANITIZER_EMSCRIPTEN
 #if !SANITIZER_HAIKU
 #include <sys/mount.h>
 #endif
@@ -166,7 +167,7 @@ typedef struct user_fpregs elf_fpregset_t;
 #include <sys/vfs.h>
 #include <sys/epoll.h>
 #include <linux/capability.h>
-#elif !SANITIZER_HAIKU
+#elif !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 #include <fstab.h>
 #endif // SANITIZER_LINUX
 
@@ -225,7 +226,7 @@ namespace __sanitizer {
   unsigned struct_fstab_sz = sizeof(struct fstab);
 #endif  // SANITIZER_GLIBC || SANITIZER_FREEBSD || SANITIZER_NETBSD ||
         // SANITIZER_APPLE
-#if !SANITIZER_ANDROID && !SANITIZER_HAIKU
+#if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
   unsigned struct_statfs_sz = sizeof(struct statfs);
   unsigned struct_sockaddr_sz = sizeof(struct sockaddr);
 
@@ -466,7 +467,10 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   // ioctl arguments
   unsigned struct_ifreq_sz = sizeof(struct ifreq);
   unsigned struct_termios_sz = sizeof(struct termios);
+
+#if !SANITIZER_EMSCRIPTEN
   unsigned struct_winsize_sz = sizeof(struct winsize);
+#endif
 
 #if SANITIZER_LINUX
   unsigned struct_arpreq_sz = sizeof(struct arpreq);
@@ -543,17 +547,21 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned struct_sock_fprog_sz = sizeof(struct sock_fprog);
 #  endif  // SANITIZER_GLIBC
 
-#  if !SANITIZER_ANDROID && !SANITIZER_APPLE && !SANITIZER_HAIKU
+#  if !SANITIZER_ANDROID && !SANITIZER_APPLE && !SANITIZER_HAIKU && \
+      !SANITIZER_EMSCRIPTEN
   unsigned struct_sioc_sg_req_sz = sizeof(struct sioc_sg_req);
   unsigned struct_sioc_vif_req_sz = sizeof(struct sioc_vif_req);
 #endif
 
   unsigned fpos_t_sz = sizeof(fpos_t);
 
+#if !SANITIZER_EMSCRIPTEN
   const unsigned long __sanitizer_bufsiz = BUFSIZ;
+#endif
 
   const unsigned IOCTL_NOT_PRESENT = 0;
 
+#if !SANITIZER_EMSCRIPTEN
   unsigned IOCTL_FIONBIO = FIONBIO;
 #if !SANITIZER_HAIKU
   unsigned IOCTL_FIOASYNC = FIOASYNC;
@@ -607,6 +615,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
   unsigned IOCTL_SIOCGETSGCNT = SIOCGETSGCNT;
   unsigned IOCTL_SIOCGETVIFCNT = SIOCGETVIFCNT;
+#endif
 #endif
 
 #if SANITIZER_LINUX
@@ -1109,6 +1118,7 @@ CHECK_SIZE_AND_OFFSET(mmsghdr, msg_len);
 #endif
 
 COMPILER_CHECK(sizeof(__sanitizer_dirent) <= sizeof(dirent));
+#if !SANITIZER_EMSCRIPTEN
 CHECK_SIZE_AND_OFFSET(dirent, d_ino);
 #if SANITIZER_APPLE
 CHECK_SIZE_AND_OFFSET(dirent, d_seekoff);
@@ -1118,6 +1128,7 @@ CHECK_SIZE_AND_OFFSET(dirent, d_seekoff);
 CHECK_SIZE_AND_OFFSET(dirent, d_off);
 #endif
 CHECK_SIZE_AND_OFFSET(dirent, d_reclen);
+#endif // !SANITIZER_EMSCRIPTEN
 
 #if SANITIZER_GLIBC
 COMPILER_CHECK(sizeof(__sanitizer_dirent64) <= sizeof(dirent64));
@@ -1139,6 +1150,7 @@ CHECK_SIZE_AND_OFFSET(pollfd, revents);
 
 CHECK_TYPE_SIZE(nfds_t);
 
+#if !SANITIZER_EMSCRIPTEN
 CHECK_TYPE_SIZE(sigset_t);
 
 COMPILER_CHECK(sizeof(__sanitizer_sigaction) == sizeof(struct sigaction));
@@ -1153,6 +1165,7 @@ CHECK_STRUCT_SIZE_AND_OFFSET(sigaction, sa_flags);
 #if SANITIZER_LINUX && (!SANITIZER_ANDROID || !SANITIZER_MIPS32)
 CHECK_STRUCT_SIZE_AND_OFFSET(sigaction, sa_restorer);
 #endif
+#endif // !SANITIZER_EMSCRIPTEN
 
 #if SANITIZER_HAS_SIGINFO
 COMPILER_CHECK(alignof(siginfo_t) == alignof(__sanitizer_siginfo));
@@ -1215,7 +1228,7 @@ CHECK_SIZE_AND_OFFSET(mntent, mnt_freq);
 CHECK_SIZE_AND_OFFSET(mntent, mnt_passno);
 #endif
 
-#if !SANITIZER_HAIKU
+#if !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 CHECK_TYPE_SIZE(ether_addr);
 #endif
 
@@ -1255,7 +1268,7 @@ CHECK_TYPE_SIZE(clock_t);
 CHECK_TYPE_SIZE(clockid_t);
 #endif
 
-#if !SANITIZER_ANDROID && !SANITIZER_HAIKU
+#if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 CHECK_TYPE_SIZE(ifaddrs);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_next);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_name);
@@ -1285,7 +1298,7 @@ CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_data);
 COMPILER_CHECK(sizeof(__sanitizer_struct_mallinfo) == sizeof(struct mallinfo));
 #endif
 
-#if !SANITIZER_ANDROID
+#if !SANITIZER_ANDROID && !SANITIZER_EMSCRIPTEN
 CHECK_TYPE_SIZE(timeb);
 CHECK_SIZE_AND_OFFSET(timeb, time);
 CHECK_SIZE_AND_OFFSET(timeb, millitm);
