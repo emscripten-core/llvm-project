@@ -131,8 +131,10 @@ void AsanThread::Destroy() {
     if (AsanThread *thread = GetCurrentThread())
       CHECK_EQ(this, thread);
     malloc_storage().CommitBack();
+#if !SANITIZER_EMSCRIPTEN
     if (common_flags()->use_sigaltstack)
       UnsetAlternateSignalStack();
+#endif
     FlushToDeadThreadStats(&stats_);
     // We also clear the shadow on thread destruction because
     // some code may still be executing in later TSD destructors
@@ -287,8 +289,10 @@ void AsanThread::ThreadStart(ThreadID os_id) {
   Init();
   asanThreadRegistry().StartThread(tid(), os_id, ThreadType::Regular, nullptr);
 
+#if !SANITIZER_EMSCRIPTEN
   if (common_flags()->use_sigaltstack)
     SetAlternateSignalStack();
+#endif
 }
 
 AsanThread *CreateMainThread() {
@@ -577,6 +581,12 @@ void PrintThreads() {
 }
 
 }  // namespace __lsan
+
+namespace __sanitizer {
+ThreadRegistry *GetThreadRegistryLocked() {
+  return __lsan::GetAsanThreadRegistryLocked();
+}
+}  // namespace __sanitizer
 
 // ---------------------- Interface ---------------- {{{1
 using namespace __asan;

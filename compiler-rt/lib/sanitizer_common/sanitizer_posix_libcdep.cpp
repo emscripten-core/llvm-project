@@ -85,6 +85,7 @@ bool DontDumpShadowMemory(uptr addr, uptr length) {
 #endif  // MADV_DONTDUMP
 }
 
+#if !SANITIZER_EMSCRIPTEN
 static rlim_t getlim(int res) {
   rlimit rlim;
   CHECK_EQ(0, getrlimit(res, &rlim));
@@ -149,6 +150,7 @@ void SetAddressSpaceUnlimited() {
   setlim(RLIMIT_AS, RLIM_INFINITY);
   CHECK(AddressSpaceIsUnlimited());
 }
+#endif
 
 void Abort() {
 #if !SANITIZER_GO
@@ -248,7 +250,9 @@ void InstallDeadlySignalHandlers(SignalHandlerType handler) {
   // Set the alternate signal stack for the main thread.
   // This will cause SetAlternateSignalStack to be called twice, but the stack
   // will be actually set only once.
+#if !SANITIZER_EMSCRIPTEN
   if (common_flags()->use_sigaltstack) SetAlternateSignalStack();
+#endif
   MaybeInstallSigaction(SIGSEGV, handler);
   MaybeInstallSigaction(SIGBUS, handler);
   MaybeInstallSigaction(SIGABRT, handler);
@@ -317,6 +321,11 @@ static void SetNonBlock(int fd) {
 }
 
 bool IsAccessibleMemoryRange(uptr beg, uptr size) {
+#if SANITIZER_EMSCRIPTEN
+  // Avoid pulling in __sys_pipe for the trick below, which doesn't work on
+  // WebAssembly anyways because there are no memory protections.
+  return true;
+#else
   while (size) {
     // `read` from `fds[0]` into a dummy buffer to free up the pipe buffer for
     // more `write` is slower than just recreating a pipe.
@@ -343,6 +352,7 @@ bool IsAccessibleMemoryRange(uptr beg, uptr size) {
   }
 
   return true;
+#endif // SANITIZER_EMSCRIPTEN
 }
 
 bool TryMemCpy(void *dest, const void *src, uptr n) {
@@ -394,7 +404,9 @@ void PlatformPrepareForSandboxing(void *args) {
   // to read the file mappings from /proc/self/maps. Luckily, neither the
   // process will be able to load additional libraries, so it's fine to use the
   // cached mappings.
+#ifndef SANITIZER_EMSCRIPTEN
   MemoryMappingLayout::CacheMemoryMappings();
+#endif
 }
 
 static bool MmapFixed(uptr fixed_addr, uptr size, int additional_flags,
@@ -519,6 +531,7 @@ void AdjustStackSize(void *attr_) {
 }
 #endif // !SANITIZER_GO
 
+#if !SANITIZER_EMSCRIPTEN
 pid_t StartSubprocess(const char *program, const char *const argv[],
                       const char *const envp[], fd_t stdin_fd, fd_t stdout_fd,
                       fd_t stderr_fd) {
@@ -597,6 +610,7 @@ int WaitForProcess(pid_t pid) {
   }
   return process_status;
 }
+#endif
 
 bool IsStateDetached(int state) {
   return state == PTHREAD_CREATE_DETACHED;

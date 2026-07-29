@@ -128,7 +128,9 @@
 //       (by providing global non-reserved names) and the new API. As we move individual platforms
 //       towards the new way of defining the locale base API, this should disappear since each platform
 //       will define those directly.
-#    if defined(__MVS__)
+#    if defined(__EMSCRIPTEN__)
+#      include <xlocale.h>
+#    elif defined(__MVS__)
 #      include <__locale_dir/locale_base_api/ibm.h>
 #    elif defined(__OpenBSD__)
 #      include <__locale_dir/locale_base_api/openbsd.h>
