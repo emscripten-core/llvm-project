@@ -16,7 +16,7 @@
     !defined(__APPLE__) && !defined(_WIN32) && !defined(__Fuchsia__) &&     \
     !(defined(__sun__) && defined(__svr4__)) && !defined(__HAIKU__) &&      \
     !defined(__wasi__) && !defined(__NVPTX__) && !defined(__AMDGPU__) &&    \
-    !defined(__SPIRV__) && !defined(_AIX)
+    !defined(__SPIRV__) && !defined(_AIX) && !defined(__EMSCRIPTEN__)
 #  error "This operating system is not supported"
 #endif
 
@@ -156,9 +156,16 @@
 #  define SANITIZER_MUSL 0
 #endif
 
+#if defined(__EMSCRIPTEN__)
+#  define SANITIZER_EMSCRIPTEN 1
+#else
+#  define SANITIZER_EMSCRIPTEN 0
+#endif
+
 #define SANITIZER_POSIX                                       \
   (SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_APPLE || \
-   SANITIZER_NETBSD || SANITIZER_SOLARIS || SANITIZER_HAIKU || SANITIZER_AIX)
+   SANITIZER_NETBSD || SANITIZER_SOLARIS || SANITIZER_HAIKU || \
+   SANITIZER_AIX || SANITIZER_EMSCRIPTEN)
 
 #if __LP64__ || defined(_WIN64)
 #  define SANITIZER_WORDSIZE 64
@@ -342,7 +349,7 @@
 #  if (SANITIZER_RISCV64 && !SANITIZER_FUCHSIA && !SANITIZER_LINUX) || \
       SANITIZER_IOS || SANITIZER_DRIVERKIT
 #    define SANITIZER_CAN_USE_ALLOCATOR64 0
-#  elif defined(__mips64) || defined(__hexagon__)
+#  elif defined(__mips64) || defined(__hexagon__) || defined(__wasm__)
 #    define SANITIZER_CAN_USE_ALLOCATOR64 0
 #  else
 #    define SANITIZER_CAN_USE_ALLOCATOR64 (SANITIZER_WORDSIZE == 64)
@@ -390,6 +397,8 @@
 #  endif
 #elif defined(__sparc__)
 #  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 52)
+#elif SANITIZER_EMSCRIPTEN
+#  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 34)
 #else
 #  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 47)
 #endif

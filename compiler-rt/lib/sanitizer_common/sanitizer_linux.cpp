@@ -14,7 +14,7 @@
 #include "sanitizer_platform.h"
 
 #if SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD || \
-    SANITIZER_SOLARIS || SANITIZER_HAIKU
+    SANITIZER_SOLARIS || SANITIZER_HAIKU || SANITIZER_EMSCRIPTEN
 
 #  include "sanitizer_common.h"
 #  include "sanitizer_flags.h"
@@ -63,7 +63,7 @@
 #  include <sched.h>
 #  include <signal.h>
 #  include <sys/mman.h>
-#  if !SANITIZER_SOLARIS && !SANITIZER_HAIKU
+#  if !SANITIZER_SOLARIS && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 #    include <sys/ptrace.h>
 #  endif
 #  include <sys/resource.h>
@@ -139,6 +139,11 @@ extern struct ps_strings *__ps_strings;
 #    include <elf.h>
 #    include <image.h>
 extern "C" char **__libc_argv;
+#  endif
+
+#  if SANITIZER_EMSCRIPTEN
+#    include <math.h>  // For INFINITY
+#    include <emscripten/threading.h>  // For emscripten_futex_wait
 #  endif
 
 extern char **environ;
@@ -271,7 +276,8 @@ ScopedBlockSignals::~ScopedBlockSignals() { SetSigProcMask(&saved_, nullptr); }
 #  endif
 
 // --------------- sanitizer_libc.h
-#  if !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  if !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU && \
+      !SANITIZER_EMSCRIPTEN
 #    if !SANITIZER_S390
 uptr internal_mmap(void *addr, uptr length, int prot, int flags, int fd,
                    u64 offset) {
@@ -357,7 +363,8 @@ uptr internal_ftruncate(fd_t fd, uptr size) {
 }
 
 #    if !SANITIZER_LINUX_USES_64BIT_SYSCALLS && SANITIZER_LINUX && \
-        !defined(__hexagon__)
+        !defined(__hexagon__) ||                                   \
+        SANITIZER_EMSCRIPTEN
 static void stat64_to_stat(struct stat64 *in, struct stat *out) {
   internal_memset(out, 0, sizeof(*out));
   out->st_dev = in->st_dev;
@@ -627,9 +634,10 @@ uptr internal_execve(const char *filename, char *const argv[],
   return internal_syscall(SYSCALL(execve), (uptr)filename, (uptr)argv,
                           (uptr)envp);
 }
-#  endif  // !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  endif  // !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU &&
+          // !SANITIZER_EMSCRIPTEN
 
-#  if !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  if !SANITIZER_NETBSD && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 void internal__exit(int exitcode) {
 #    if SANITIZER_FREEBSD || SANITIZER_SOLARIS
   internal_syscall(SYSCALL(exit), exitcode);
@@ -638,7 +646,7 @@ void internal__exit(int exitcode) {
 #    endif
   Die();  // Unreachable.
 }
-#  endif  // !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  endif  // !SANITIZER_NETBSD && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 
 // ----------------- sanitizer_common.h
 bool FileExists(const char *filename) {
@@ -658,7 +666,7 @@ bool DirExists(const char *path) {
   return S_ISDIR(st.st_mode);
 }
 
-#  if !SANITIZER_NETBSD
+#  if !SANITIZER_NETBSD && !SANITIZER_EMSCRIPTEN
 ThreadID GetTid() {
 #    if SANITIZER_FREEBSD
   long Tid;
@@ -673,20 +681,22 @@ ThreadID GetTid() {
 #    endif
 }
 
+#    if !SANITIZER_EMSCRIPTEN
 int TgKill(pid_t pid, ThreadID tid, int sig) {
-#    if SANITIZER_LINUX
+#      if SANITIZER_LINUX
   return internal_syscall(SYSCALL(tgkill), pid, tid, sig);
-#    elif SANITIZER_FREEBSD
+#      elif SANITIZER_FREEBSD
   return internal_syscall(SYSCALL(thr_kill2), pid, tid, sig);
-#    elif SANITIZER_SOLARIS
+#      elif SANITIZER_SOLARIS
   (void)pid;
   errno = thr_kill(tid, sig);
   // TgKill is expected to return -1 on error, not an errno.
   return errno != 0 ? -1 : 0;
-#    elif SANITIZER_HAIKU
+#      elif SANITIZER_HAIKU
   return kill_thread(tid);
-#    endif
+#      endif
 }
+#    endif
 #  endif
 
 #  if SANITIZER_GLIBC
@@ -713,7 +723,7 @@ u64 NanoTime() {
 // should be called first inside __asan_init.
 const char *GetEnv(const char *name) {
 #  if SANITIZER_FREEBSD || SANITIZER_NETBSD || SANITIZER_SOLARIS || \
-      SANITIZER_HAIKU
+      SANITIZER_HAIKU || SANITIZER_EMSCRIPTEN
   if (::environ != 0) {
     uptr NameLen = internal_strlen(name);
     for (char **Env = ::environ; *Env != 0; Env++) {
@@ -758,7 +768,8 @@ SANITIZER_WEAK_ATTRIBUTE extern void *__libc_stack_end;
 }
 #  endif
 
-#  if !SANITIZER_HAIKU && !SANITIZER_FREEBSD && !SANITIZER_NETBSD
+#  if !SANITIZER_HAIKU && !SANITIZER_FREEBSD && !SANITIZER_NETBSD && \
+      !SANITIZER_EMSCRIPTEN
 static void ReadNullSepFileToArray(const char *path, char ***arr,
                                    int arr_size) {
   char *buff;
@@ -784,11 +795,12 @@ static void ReadNullSepFileToArray(const char *path, char ***arr,
 }
 #  endif
 
+#  if !SANITIZER_EMSCRIPTEN
 static void GetArgsAndEnv(char ***argv, char ***envp) {
-#  if SANITIZER_HAIKU
+#    if SANITIZER_HAIKU
   *argv = __libc_argv;
   *envp = environ;
-#  elif SANITIZER_FREEBSD
+#    elif SANITIZER_FREEBSD
   // On FreeBSD, retrieving the argument and environment arrays is done via the
   // kern.ps_strings sysctl, which returns a pointer to a structure containing
   // this information. See also <sys/exec.h>.
@@ -800,11 +812,11 @@ static void GetArgsAndEnv(char ***argv, char ***envp) {
   }
   *argv = pss->ps_argvstr;
   *envp = pss->ps_envstr;
-#  elif SANITIZER_NETBSD
+#    elif SANITIZER_NETBSD
   *argv = __ps_strings->ps_argvstr;
   *envp = __ps_strings->ps_envstr;
-#  else  // SANITIZER_FREEBSD
-#    if !SANITIZER_GO
+#    else  // SANITIZER_FREEBSD
+#      if !SANITIZER_GO
   if (&__libc_stack_end) {
     uptr *stack_end = (uptr *)__libc_stack_end;
     // Linux/sparc64 needs an adjustment, cf. glibc
@@ -821,14 +833,14 @@ static void GetArgsAndEnv(char ***argv, char ***envp) {
     *argv = (char **)(stack_end + 1);
     *envp = (char **)(stack_end + argc + 2);
   } else {
-#    endif  // !SANITIZER_GO
+#      endif  // !SANITIZER_GO
     static const int kMaxArgv = 2000, kMaxEnvp = 2000;
     ReadNullSepFileToArray("/proc/self/cmdline", argv, kMaxArgv);
     ReadNullSepFileToArray("/proc/self/environ", envp, kMaxEnvp);
-#    if !SANITIZER_GO
+#      if !SANITIZER_GO
   }
-#    endif  // !SANITIZER_GO
-#  endif    // SANITIZER_HAIKU
+#      endif  // !SANITIZER_GO
+#    endif    // SANITIZER_FREEBSD
 }
 
 char **GetArgv() {
@@ -843,12 +855,16 @@ char **GetEnviron() {
   return envp;
 }
 
+#  endif  // !SANITIZER_EMSCRIPTEN
+
 #  if !SANITIZER_SOLARIS
 void FutexWait(atomic_uint32_t *p, u32 cmp) {
 #    if SANITIZER_FREEBSD
   _umtx_op(p, UMTX_OP_WAIT_UINT, cmp, 0, 0);
 #    elif SANITIZER_NETBSD || SANITIZER_HAIKU
   sched_yield(); /* No userspace futex-like synchronization */
+#    elif SANITIZER_EMSCRIPTEN
+  emscripten_futex_wait(p, cmp, INFINITY);
 #    else
   internal_syscall(SYSCALL(futex), (uptr)p, FUTEX_WAIT_PRIVATE, cmp, 0, 0, 0);
 #    endif
@@ -859,6 +875,8 @@ void FutexWake(atomic_uint32_t *p, u32 count) {
   _umtx_op(p, UMTX_OP_WAKE, count, 0, 0);
 #    elif SANITIZER_NETBSD || SANITIZER_HAIKU
   /* No userspace futex-like synchronization */
+#    elif SANITIZER_EMSCRIPTEN
+  emscripten_futex_wake(p, count);
 #    else
   internal_syscall(SYSCALL(futex), (uptr)p, FUTEX_WAKE_PRIVATE, count, 0, 0, 0);
 #    endif
@@ -889,7 +907,8 @@ struct linux_dirent {
 };
 #  endif
 
-#  if !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  if !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_HAIKU && \
+      !SANITIZER_EMSCRIPTEN
 // Syscall wrappers.
 uptr internal_ptrace(int request, int pid, void *addr, void *data) {
   return internal_syscall(SYSCALL(ptrace), request, pid, (uptr)addr,
@@ -1101,9 +1120,9 @@ bool internal_sigismember(__sanitizer_sigset_t *set, int signum) {
   return sigismember(rset, signum);
 }
 #    endif
-#  endif  // !SANITIZER_SOLARIS
+#  endif  // !SANITIZER_SOLARIS && !SANITIZER_NETBSD && !SANITIZER_EMSCRIPTEN
 
-#  if !SANITIZER_NETBSD && !SANITIZER_HAIKU
+#  if !SANITIZER_NETBSD && !SANITIZER_HAIKU && !SANITIZER_EMSCRIPTEN
 // ThreadLister implementation.
 ThreadLister::ThreadLister(pid_t pid) : buffer_(4096) {
   task_path_.AppendF("/proc/%d/task", pid);
@@ -1316,6 +1335,10 @@ uptr GetPageSize() {
 }
 #  endif
 
+#  if SANITIZER_EMSCRIPTEN
+extern "C" void _emscripten_get_progname(char *buf, int buf_len);
+#  endif
+
 uptr ReadBinaryName(/*out*/ char *buf, uptr buf_len) {
 #  if SANITIZER_HAIKU
   int32 cookie = 0;
@@ -1333,6 +1356,9 @@ uptr ReadBinaryName(/*out*/ char *buf, uptr buf_len) {
   const char *default_module_name = getexecname();
   CHECK_NE(default_module_name, NULL);
   return internal_snprintf(buf, buf_len, "%s", default_module_name);
+#  elif SANITIZER_EMSCRIPTEN
+  _emscripten_get_progname(buf, buf_len);
+  return internal_strlen(buf);
 #  else
 #    if SANITIZER_FREEBSD || SANITIZER_NETBSD
 #      if SANITIZER_FREEBSD
@@ -1990,7 +2016,7 @@ HandleSignalMode GetHandleSignalMode(int signum) {
   return result;
 }
 
-#  if !SANITIZER_GO
+#  if !SANITIZER_GO && !SANITIZER_EMSCRIPTEN
 void *internal_start_thread(void *(*func)(void *arg), void *arg) {
   if (&internal_pthread_create == 0)
     return nullptr;
@@ -2796,6 +2822,9 @@ static void GetPcSpBp(void *context, uptr *pc, uptr *sp, uptr *bp) {
   *pc = ucontext->uc_mcontext.sc_pc;
   *bp = ucontext->uc_mcontext.sc_regs[15];  // $fp / $s6
   *sp = ucontext->uc_mcontext.sc_regs[30];  // $sp
+#  elif SANITIZER_EMSCRIPTEN
+  Report("GetPcSpBp not implemented on emscripten");
+  Abort();
 #  else
 #    error "Unsupported arch"
 #  endif

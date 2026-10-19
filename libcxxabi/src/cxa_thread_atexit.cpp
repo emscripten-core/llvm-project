@@ -106,16 +106,21 @@ namespace {
 
 #endif // HAVE___CXA_THREAD_ATEXIT_IMPL
 
-#if defined(__linux__) || defined(__Fuchsia__)
+#if defined(__linux__) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__)
 extern "C" {
 
   _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw() {
 #ifdef HAVE___CXA_THREAD_ATEXIT_IMPL
     return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
 #else
+#ifndef __EMSCRIPTEN__
+    // Emscripten doesn't implement __cxa_thread_atexit_impl, so we can simply
+    // avoid this check.
     if (__cxa_thread_atexit_impl) {
       return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
-    } else {
+    } else
+#endif
+    {
       // Initialize the dtors std::__libcpp_tls_key (uses __cxa_guard_*() for
       // one-time initialization and __cxa_atexit() for destruction)
       static DtorsManager manager;
@@ -142,5 +147,5 @@ extern "C" {
 #endif // HAVE___CXA_THREAD_ATEXIT_IMPL
   }
 } // extern "C"
-#endif // defined(__linux__) || defined(__Fuchsia__)
+#endif // defined(__linux__) || defined(__Fuchsia__) || defined(__EMSCRIPTEN__)
 } // namespace __cxxabiv1
