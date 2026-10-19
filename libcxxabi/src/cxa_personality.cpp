@@ -720,6 +720,7 @@ static void scan_eh_tab(scan_results &results, _Unwind_Action actions,
     const uint8_t* lpStart = lpStartEncoding == DW_EH_PE_omit
                                  ? (const uint8_t*)funcStart
                                  : (const uint8_t*)readEncodedPointer(&lsda, lpStartEncoding, base);
+    (void)(lpStart);  // Unused when using SjLj/Wasm exceptions
     uint8_t ttypeEncoding = *lsda++;
     if (ttypeEncoding != DW_EH_PE_omit)
     {
@@ -733,7 +734,7 @@ static void scan_eh_tab(scan_results &results, _Unwind_Action actions,
     // includes current PC.
     uint8_t callSiteEncoding = *lsda++;
 #if defined(__USING_SJLJ_EXCEPTIONS__) || defined(__WASM_EXCEPTIONS__)
-    (void)callSiteEncoding;  // When using SjLj/Wasm exceptions, callSiteEncoding is never used
+    (void)callSiteEncoding;  // Unused when using SjLj/Wasm exceptions
 #endif
     uint32_t callSiteTableLength = static_cast<uint32_t>(readULEB128(&lsda));
     const uint8_t* callSiteTableStart = lsda;
@@ -1011,9 +1012,7 @@ static inline void get_landing_pad(__cxa_catch_temp_type &dest,
 #endif
 }
 
-#ifdef __WASM_EXCEPTIONS__
-_Unwind_Reason_Code __gxx_personality_wasm0
-#elif defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)
+#if (defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)) || defined(__WASM_EXCEPTIONS__)
 static _Unwind_Reason_Code __gxx_personality_imp
 #else
 _LIBCXXABI_FUNC_VIS _Unwind_Reason_Code
@@ -1111,6 +1110,22 @@ __gxx_personality_seh0(PEXCEPTION_RECORD ms_exc, void *this_frame,
 {
   return _GCC_specific_handler(ms_exc, this_frame, ms_orig_context, ms_disp,
                                __gxx_personality_imp);
+}
+#endif
+
+#ifdef __WASM_EXCEPTIONS__
+extern "C" _LIBCXXABI_FUNC_VIS _Unwind_Reason_Code __gxx_wasm_personality_v0(void* exception_ptr) {
+  struct _Unwind_Exception* exception_object = (struct _Unwind_Exception*)exception_ptr;
+
+  struct _Unwind_LandingPadContext* context = _Unwind_GetWasmLPadContext();
+
+  // Reset the selector.
+  context->selector = 0;
+
+  // Call personality function. Wasm does not have two-phase unwinding, so we
+  // only do the search phase.
+  return __gxx_personality_imp(
+      1, _UA_SEARCH_PHASE, exception_object->exception_class, exception_object, (struct _Unwind_Context*)context);
 }
 #endif
 

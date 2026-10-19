@@ -71,7 +71,7 @@ __terminate(terminate_handler func) noexcept
 [[noreturn]] void
 terminate() noexcept
 {
-#ifndef _LIBCXXABI_NO_EXCEPTIONS
+#if !defined(_LIBCXXABI_NO_EXCEPTIONS) && !defined(__EMSCRIPTEN_EXCEPTIONS__)
     // If there might be an uncaught exception
     using namespace __cxxabiv1;
     __cxa_eh_globals* globals = __cxa_get_globals_fast();
